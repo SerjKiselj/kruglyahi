@@ -16,15 +16,6 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
 
-async def get_fps(video_path: str) -> float:
-    command = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
-        'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
-    ]
-    fps_str = subprocess.check_output(command).decode().strip()
-    num, denom = map(float, fps_str.split('/'))
-    return num / denom
-
 async def get_video_dimensions(video_path: str) -> tuple:
     command = [
         'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
@@ -55,17 +46,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             os.remove(video_path)
             return
 
-        # Определение частоты кадров и размеров видео
-        fps = await get_fps(video_path)
+        # Определение размеров видео
         width, height = await get_video_dimensions(video_path)
-        logger.info(f'Частота кадров исходного видео: {fps} FPS')
         logger.info(f'Размеры исходного видео: {width}x{height}')
-
-        # Определение параметров конвертации
-        if fps == 60:
-            fps_option = '30'  # Замедление в 2 раза
-        else:
-            fps_option = '30'  # Параметр для 30 FPS
 
         # Определение параметров для обрезки до 1:1
         crop_size = min(width, height)
@@ -75,9 +58,10 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
         command = [
-            'ffmpeg', '-i', video_path, 
-            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p,fps={fps_option}',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M', '-an', output_path
+            'ffmpeg', '-i', video_path,
+            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
+            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
+            '-c:a', 'aac', '-b:a', '128k', '-shortest', output_path  # Кодек и параметры для аудио
         ]
 
         # Асинхронный запуск конвертации
