@@ -85,7 +85,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 out_time_ms = int(match_out_time.group(1))
                 duration_ms = int(match_duration.group(1))
                 new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
+                if new_progress - progress >= 5:  # Обновляем только если прогресс изменился на 5%
                     progress = new_progress
                     await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
 
@@ -118,4 +118,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-        
