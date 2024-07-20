@@ -1,16 +1,16 @@
-from telegram import Update, VideoNote
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import subprocess
 
 # Ваш токен, полученный от BotFather
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
 
-def handle_video(update: Update, context: CallbackContext) -> None:
-    video_file = update.message.video.get_file()
-    video_path = video_file.download()
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    video_file = await update.message.video.get_file()
+    video_path = video_file.file_path
 
     # Конвертация видео в круглое видеосообщение
     output_path = "output.mp4"
@@ -20,18 +20,15 @@ def handle_video(update: Update, context: CallbackContext) -> None:
     subprocess.run(command)
 
     with open(output_path, 'rb') as video:
-        update.message.reply_video_note(video)
+        await update.message.reply_video_note(video)
 
 def main() -> None:
-    updater = Updater(TOKEN)
+    application = Application.builder().token(TOKEN).build()
 
-    dp = updater.dispatcher
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(filters.VIDEO, handle_video))
-
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
