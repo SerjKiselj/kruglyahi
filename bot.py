@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram import Update, VideoNote
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
 import subprocess
 
 # Ваш токен, полученный от BotFather
@@ -28,7 +28,7 @@ def main() -> None:
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.video, handle_video))
+    dp.add_handler(MessageHandler(filters.VIDEO, handle_video))
 
     updater.start_polling()
     updater.idle()
