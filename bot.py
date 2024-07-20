@@ -43,8 +43,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
         command = [
-            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p', 
-            '-r', '60', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
+            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p,fps=60',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
         ]
 
         # Асинхронный запуск конвертации
