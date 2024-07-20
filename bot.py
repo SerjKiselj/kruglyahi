@@ -75,21 +75,23 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         progress_message = await update.message.reply_text('Конвертация началась!')
 
         # Обработка вывода `ffmpeg` для отслеживания прогресса
+        progress = 0
         while True:
             line = process.stderr.readline()
             if not line:
                 break
-            if 'out_time_ms' in line:
-                # Извлечение времени из строки
-                match = re.search(r'out_time_ms=(\d+)', line)
-                if match:
-                    out_time_ms = int(match.group(1))
-                    duration_match = re.search(r'duration=(\d+)', line)
-                    if duration_match:
-                        duration_ms = int(duration_match.group(1))
-                        progress_percentage = (out_time_ms / duration_ms) * 100
-                        progress_text = f'Прогресс: {progress_percentage:.2f}%'
-                        await progress_message.edit_text(progress_text)
+            
+            # Поиск времени из вывода ffmpeg
+            match_out_time = re.search(r'out_time_ms=(\d+)', line)
+            if match_out_time:
+                out_time_ms = int(match_out_time.group(1))
+                duration_match = re.search(r'duration=(\d+)', line)
+                if duration_match:
+                    duration_ms = int(duration_match.group(1))
+                    new_progress = (out_time_ms / duration_ms) * 100
+                    if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
+                        progress = new_progress
+                        await progress_message.edit_text(f'Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
