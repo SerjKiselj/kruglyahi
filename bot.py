@@ -33,27 +33,4 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         file = await context.bot.get_file(video_file)
 
         # Использование временного файла для загрузки видео
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
-            video_path = temp_file.name
-        
-        # Загрузка файла
-        await file.download_to_drive(video_path)
-        logger.info(f'Видео загружено: {video_path}')
-
-        # Проверка размера файла
-        file_size = os.path.getsize(video_path)
-        if file_size > 2 * 1024 * 1024 * 1024:  # 2 ГБ
-            await update.message.reply_text('Размер видео слишком большой. Пожалуйста, отправьте видео размером менее 2 ГБ.')
-            os.remove(video_path)
-            return
-
-        # Определение размеров видео
-        width, height = await get_video_dimensions(video_path)
-        logger.info(f'Размеры исходного видео: {width}x{height}')
-
-        # Определение параметров для обрезки до 1:1
-        crop_size = min(width, height)
-        x_offset = (width - crop_size) // 2
-        y_offset = (height - crop_size) // 2
-
-        # Использование временного файла для 
+        with temp
