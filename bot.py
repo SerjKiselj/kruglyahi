@@ -82,33 +82,4 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 break
 
             # Логирование всех строк вывода для отладки
-            logger.info(f'ffmpeg output: {line.strip()}')
-
-            # Поиск времени из вывода ffmpeg
-            match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            match_duration = re.search(r'duration=(\d+)', line)
-            if match_out_time and match_duration:
-                out_time_ms = int(match_out_time.group(1))
-                duration_ms = int(match_duration.group(1))
-                new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
-                    progress = new_progress
-                    await progress_message.edit_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
-
-        # Завершение процесса и проверка результата
-        process.wait()
-        logger.info(f'Конвертация завершена: {output_path}')
-
-        # Отправка сконвертированного видео
-        with open(output_path, 'rb') as video:
-            await update.message.reply_video_note(video)
-
-        # Очистка временных файлов
-        os.remove(video_path)
-        os.remove(output_path)
-
-        # Сообщение о завершении
-        await update.message.reply_text('Конвертация завершена!')
-    
-    except Exception as e:
-        logger.error(f'Ошибка обработки виде
+            logger.info(f'ffmpe
