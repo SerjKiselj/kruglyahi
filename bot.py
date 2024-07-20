@@ -1,10 +1,9 @@
 import logging
 import tempfile
-import subprocess
 import os
-import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from moviepy.editor import VideoFileClip, vfx
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -15,15 +14,6 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
-
-async def get_video_dimensions(video_path: str) -> tuple:
-    command = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
-        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
-    ]
-    output = subprocess.check_output(command).decode().strip().split('\n')
-    width, height = int(output[0]), int(output[1])
-    return width, height
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -46,58 +36,44 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             os.remove(video_path)
             return
 
-        # Определение размеров видео
-        width, height = await get_video_dimensions(video_path)
-        logger.info(f'Размеры исходного видео: {width}x{height}')
+        # Загрузка видео с использованием moviepy
+        video = VideoFileClip(video_path)
 
-        # Определение параметров для обрезки до 1:1
+        # Определение размеров видео и обрезка до 1:1
+        width, height = video.size
         crop_size = min(width, height)
         x_offset = (width - crop_size) // 2
         y_offset = (height - crop_size) // 2
 
+        # Обрезка и изменение размера видео
+        video = video.crop(x1=x_offset, y1=y_offset, x2=x_offset + crop_size, y2=y_offset + crop_size)
+        video = video.resize((240, 240))
+
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
-        
-        # Команда для выполнения конвертации с прогрессом
-        command = [
-            'ffmpeg', '-i', video_path,
-            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest',
-            '-progress', '-', output_path
-        ]
 
-        # Запуск конвертации
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        # Функция для обновления прогресса
+        def update_progress(current_time, total_time):
+            progress = (current_time / total_time) * 100
+            logger.info(f'Прогресс: {progress:.2f}%')
+            if update_progress.last_progress is None or progress - update_progress.last_progress >= 1:
+                update_progress.last_progress = progress
+                context.bot.send_message(chat_id=update.message.chat_id, text=f'Прогресс: {progress:.2f}%')
 
-        # Отправка сообщения о начале конвертации
-        await update.message.reply_text('Конвертация началась!')
+        update_progress.last_progress = None
 
-        progress_message = None
-        progress = 0
+        # Сохранение видео с отслеживанием прогресса
+        video.write_videofile(output_path, codec='libx264', audio_codec='aac', temp_audiofile='temp-audio.m4a',
+                              remove_temp=True, progress_bar=False, logger=None, 
+                              verbose=False, threads=4, write_logfile=None, 
+                              audio=True, audio_fps=44100,
+                              callback=lambda t: update_progress(t, video.duration))
 
-        for line in process.stderr:
-            logger.info(f'ffmpeg output: {line.strip()}')
-
-            # Поиск времени из вывода ffmpeg
-            match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            match_duration = re.search(r'duration=(\d+)', line)
-            if match_out_time and match_duration:
-                out_time_ms = int(match_out_time.group(1))
-                duration_ms = int(match_duration.group(1))
-                new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
-                    progress = new_progress
-                    if progress_message:
-                        await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
-
-        # Завершение процесса и проверка результата
-        process.wait()
         logger.info(f'Конвертация завершена: {output_path}')
 
         # Отправка сконвертированного видео
-        with open(output_path, 'rb') as video:
-            await update.message.reply_video_note(video)
+        with open(output_path, 'rb') as video_file:
+            await update.message.reply_video_note(video_file)
 
         # Очистка временных файлов
         os.remove(video_path)
