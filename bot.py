@@ -3,7 +3,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 import subprocess
 
 # Ваш токен, полученный от BotFather
-TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
