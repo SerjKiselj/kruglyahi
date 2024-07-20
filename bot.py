@@ -80,7 +80,10 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             line = process.stderr.readline()
             if not line:
                 break
-            
+
+            # Логирование всех строк вывода для отладки
+            logger.info(f'ffmpeg output: {line.strip()}')
+
             # Поиск времени из вывода ffmpeg
             match_out_time = re.search(r'out_time_ms=(\d+)', line)
             match_duration = re.search(r'duration=(\d+)', line)
@@ -108,16 +111,4 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text('Конвертация завершена!')
     
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}')
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-def main() -> None:
-    application = Application.builder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
+        logger.error(f'Ошибка обработки виде
