@@ -40,12 +40,18 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Отправка сообщения о начале конвертации
         await update.message.reply_text('Начинаю конвертацию видео, это может занять некоторое время...')
 
-        # Получение частоты кадров
+        # Получение частоты кадров и длительности исходного видео
         probe_command = [
             'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
             'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
         ]
         fps = subprocess.check_output(probe_command).decode().strip()
+
+        duration_command = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
+            '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ]
+        duration = subprocess.check_output(duration_command).decode().strip()
 
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
@@ -81,4 +87,4 @@ def main() -> None:
     application.run_polling()
 
 if __name__ == '__main__':
-    main() 
+    main()
