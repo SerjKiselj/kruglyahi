@@ -3,7 +3,7 @@ import tempfile
 import subprocess
 import os
 import asyncio
-from telegram import Update, InputFile
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # Настройка логирования
@@ -21,7 +21,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Получение файла видео
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
-        
+
         # Использование временного файла для загрузки видео
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             video_path = temp_file.name
@@ -40,10 +40,18 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Отправка сообщения о начале конвертации
         await update.message.reply_text('Начинаю конвертацию видео, это может занять некоторое время...')
 
+        # Получение частоты кадров
+        probe_command = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
+            'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ]
+        fps = subprocess.check_output(probe_command).decode().strip()
+
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
         command = [
-            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p', '-c:v', 'libx264', '-an', output_path
+            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p', 
+            '-r', fps, '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
         ]
 
         # Асинхронный запуск конвертации
@@ -73,4 +81,4 @@ def main() -> None:
     application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    main() 
