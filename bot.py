@@ -38,4 +38,40 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
 
         # Отправка сообщения о начале конвертации
-        await upda
+        await update.message.reply_text('Начинаю конвертацию видео, это может занять некоторое время...')
+
+        # Использование временного файла для выходного видео
+        output_path = tempfile.mktemp(suffix=".mp4")
+        command = [
+            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p', 
+            '-r', '60', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
+        ]
+
+        # Асинхронный запуск конвертации
+        await asyncio.to_thread(subprocess.run, command, check=True)
+        logger.info(f'Конвертация завершена: {output_path}')
+
+        # Отправка сконвертированного видео
+        with open(output_path, 'rb') as video:
+            await update.message.reply_video_note(video)
+
+        # Очистка временных файлов
+        os.remove(video_path)
+        os.remove(output_path)
+
+        # Сообщение о завершении
+        await update.message.reply_text('Конвертация завершена!')
+    except Exception as e:
+        logger.error(f'Ошибка обработки видео: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
+def main() -> None:
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
