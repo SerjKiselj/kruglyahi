@@ -92,7 +92,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 new_progress = (out_time_ms / duration_ms) * 100
                 if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
                     progress = new_progress
-                    await progress_message.edit_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
+                    await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
