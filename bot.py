@@ -3,7 +3,7 @@ import tempfile
 import subprocess
 import os
 import asyncio
-from telegram import Update
+from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # Настройка логирования
@@ -18,13 +18,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        video_file = await update.message.video.get_file()
-
+        # Получение файла видео
+        video_file = update.message.video.file_id
+        file = await context.bot.get_file(video_file)
+        
         # Использование временного файла для загрузки видео
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             video_path = temp_file.name
         
-        await video_file.download(video_path)
+        # Загрузка файла
+        await file.download_to_drive(video_path)
         logger.info(f'Видео загружено: {video_path}')
 
         # Проверка размера файла
