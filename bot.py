@@ -71,9 +71,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
         # Отправка сообщения о начале конвертации
-        progress_message = await update.message.reply_text('Конвертация началась! Прогресс: 0%')
+        await update.message.reply_text('Конвертация началась!')
 
-        # Обработка вывода `ffmpeg` для отслеживания прогресса
+        progress_message = None
         progress = 0
         while True:
             line = process.stderr.readline()
@@ -92,7 +92,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 new_progress = (out_time_ms / duration_ms) * 100
                 if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
                     progress = new_progress
-                    await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
+                    if progress_message:
+                        await progress_message.delete()  # Удаление старого сообщения
+                    progress_message = await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
