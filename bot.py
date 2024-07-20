@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 import os
 import asyncio
+import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -57,15 +58,41 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
+        
+        # Команда для выполнения конвертации с прогрессом
         command = [
             'ffmpeg', '-i', video_path,
             '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
             '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest', output_path  # Кодек и параметры для аудио
+            '-c:a', 'aac', '-b:a', '128k', '-shortest',
+            '-progress', '-', output_path
         ]
 
-        # Асинхронный запуск конвертации
-        await asyncio.to_thread(subprocess.run, command, check=True)
+        # Запуск конвертации
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, universal_newlines=True)
+
+        # Сообщение о начале конвертации
+        progress_message = await update.message.reply_text('Конвертация началась!')
+
+        # Обработка вывода `ffmpeg` для отслеживания прогресса
+        while True:
+            line = process.stderr.readline()
+            if not line:
+                break
+            if 'out_time_ms' in line:
+                # Извлечение времени из строки
+                match = re.search(r'out_time_ms=(\d+)', line)
+                if match:
+                    out_time_ms = int(match.group(1))
+                    duration_match = re.search(r'duration=(\d+)', line)
+                    if duration_match:
+                        duration_ms = int(duration_match.group(1))
+                        progress_percentage = (out_time_ms / duration_ms) * 100
+                        progress_text = f'Прогресс: {progress_percentage:.2f}%'
+                        await progress_message.edit_text(progress_text)
+
+        # Завершение процесса и проверка результата
+        process.wait()
         logger.info(f'Конвертация завершена: {output_path}')
 
         # Отправка сконвертированного видео
