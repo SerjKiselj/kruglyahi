@@ -25,6 +25,15 @@ async def get_fps(video_path: str) -> float:
     num, denom = map(float, fps_str.split('/'))
     return num / denom
 
+async def get_video_dimensions(video_path: str) -> tuple:
+    command = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+    ]
+    output = subprocess.check_output(command).decode().strip().split('\n')
+    width, height = int(output[0]), int(output[1])
+    return width, height
+
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         # Получение файла видео
@@ -46,23 +55,29 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             os.remove(video_path)
             return
 
-        # Определение частоты кадров исходного видео
+        # Определение частоты кадров и размеров видео
         fps = await get_fps(video_path)
+        width, height = await get_video_dimensions(video_path)
         logger.info(f'Частота кадров исходного видео: {fps} FPS')
+        logger.info(f'Размеры исходного видео: {width}x{height}')
 
         # Определение параметров конвертации
         if fps == 60:
             fps_option = '30'  # Замедление в 2 раза
-            scale_filter = 'scale=240:240,setsar=1:1,format=yuv420p'
         else:
             fps_option = '30'  # Параметр для 30 FPS
-            scale_filter = 'scale=240:240,setsar=1:1,format=yuv420p'
-        
+
+        # Определение параметров для обрезки до 1:1
+        crop_size = min(width, height)
+        x_offset = (width - crop_size) // 2
+        y_offset = (height - crop_size) // 2
+
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
         command = [
-            'ffmpeg', '-i', video_path, '-vf', f'{scale_filter},fps={fps_option}',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
+            'ffmpeg', '-i', video_path, 
+            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p,fps={fps_option}',
+            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M', '-an', output_path
         ]
 
         # Асинхронный запуск конвертации
