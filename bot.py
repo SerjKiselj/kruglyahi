@@ -56,30 +56,4 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         x_offset = (width - crop_size) // 2
         y_offset = (height - crop_size) // 2
 
-        # Использование временного файла для выходного видео
-        output_path = tempfile.mktemp(suffix=".mp4")
-        
-        # Команда для выполнения конвертации с прогрессом
-        command = [
-            'ffmpeg', '-i', video_path,
-            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest',
-            '-progress', '-', output_path
-        ]
-
-        # Запуск конвертации
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-
-        # Отправка сообщения о начале конвертации
-        progress_message = await update.message.reply_text('Конвертация началась! Прогресс: 0%')
-
-        # Обработка вывода `ffmpeg` для отслеживания прогресса
-        progress = 0
-        while True:
-            line = process.stderr.readline()
-            if not line:
-                break
-
-            # Логирование всех строк вывода для отладки
-            logger.info(f'ffmpe
+        # Использование временного файла для 
