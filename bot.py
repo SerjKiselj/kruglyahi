@@ -16,6 +16,15 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
 
+async def get_fps(video_path: str) -> float:
+    command = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
+        'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+    ]
+    fps_str = subprocess.check_output(command).decode().strip()
+    num, denom = map(float, fps_str.split('/'))
+    return num / denom
+
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         # Получение файла видео
@@ -37,13 +46,22 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             os.remove(video_path)
             return
 
-        # Отправка сообщения о начале конвертации
-        await update.message.reply_text('Начинаю конвертацию видео, это может занять некоторое время...')
+        # Определение частоты кадров исходного видео
+        fps = await get_fps(video_path)
+        logger.info(f'Частота кадров исходного видео: {fps} FPS')
 
+        # Определение параметров конвертации
+        if fps == 60:
+            fps_option = '30'  # Замедление в 2 раза
+            scale_filter = 'scale=240:240,setsar=1:1,format=yuv420p'
+        else:
+            fps_option = '30'  # Параметр для 30 FPS
+            scale_filter = 'scale=240:240,setsar=1:1,format=yuv420p'
+        
         # Использование временного файла для выходного видео
         output_path = tempfile.mktemp(suffix=".mp4")
         command = [
-            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240,setsar=1:1,format=yuv420p,fps=60',
+            'ffmpeg', '-i', video_path, '-vf', f'{scale_filter},fps={fps_option}',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-an', output_path
         ]
 
