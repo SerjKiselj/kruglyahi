@@ -75,12 +75,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         progress_message = None
         progress = 0
-        while True:
-            line = process.stderr.readline()
-            if not line:
-                break
 
-            # Логирование всех строк вывода для отладки
+        for line in process.stderr:
             logger.info(f'ffmpeg output: {line.strip()}')
 
             # Поиск времени из вывода ffmpeg
@@ -93,8 +89,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
                     progress = new_progress
                     if progress_message:
-                        await progress_message.delete()  # Удаление старого сообщения
-                    progress_message = await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
+                        await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
