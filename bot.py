@@ -69,7 +69,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ]
 
         # Запуск конвертации
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, universal_newlines=True)
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
         # Сообщение о начале конвертации
         progress_message = await update.message.reply_text('Конвертация началась!')
@@ -83,15 +83,14 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
             # Поиск времени из вывода ffmpeg
             match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            if match_out_time:
+            match_duration = re.search(r'duration=(\d+)', line)
+            if match_out_time and match_duration:
                 out_time_ms = int(match_out_time.group(1))
-                duration_match = re.search(r'duration=(\d+)', line)
-                if duration_match:
-                    duration_ms = int(duration_match.group(1))
-                    new_progress = (out_time_ms / duration_ms) * 100
-                    if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
-                        progress = new_progress
-                        await progress_message.edit_text(f'Прогресс: {progress:.2f}%')
+                duration_ms = int(match_duration.group(1))
+                new_progress = (out_time_ms / duration_ms) * 100
+                if new_progress - progress >= 1:  # Обновляем только если прогресс изменился на 1%
+                    progress = new_progress
+                    await progress_message.edit_text(f'Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
