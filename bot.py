@@ -30,6 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        await update.message.reply_text("Начинается процесс конвертации видео...")
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
 
@@ -62,6 +63,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        await update.message.reply_text("Начинается процесс конвертации видеосообщения в аудио...")
         video_note_file = update.message.video_note.file_id
         file = await context.bot.get_file(video_note_file)
 
@@ -73,7 +75,6 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', wav_path]
-        await update.message.reply_text('Конвертация видеосообщения в аудио...')
         subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
         recognizer = sr.Recognizer()
@@ -153,7 +154,7 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         logger.info(f'ffmpeg output: {process.stdout}')
 
         with open(output_path, 'rb') as audio:
@@ -179,6 +180,7 @@ async def get_video_dimensions(video_path: str) -> tuple:
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        await update.message.reply_text("Начинается процесс распознавания речи...")
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
 
@@ -221,3 +223,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
