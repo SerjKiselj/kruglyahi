@@ -2,7 +2,6 @@ import logging
 import tempfile
 import os
 import subprocess
-import re
 import speech_recognition as sr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
@@ -208,44 +207,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     except Exception as e:
         logger.error(f'Ошибка обработки голосового сообщения: {e}')
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        # Получение файла видеосообщения
-        video_note_file = update.message.video_note.file_id
-        file = await context.bot.get_file(video_note_file)
-
-        # Сохранение файла временно
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
-            video_note_path = temp_file.name
-
-        # Загрузка файла
-        await file.download_to_drive(video_note_path)
-        logger.info(f'Видеосообщение загружено: {video_note_path}')
-
-        # Извлечение аудио из видеосообщения
-        audio_path = tempfile.mktemp(suffix=".wav")
-        command = [
-            'ffmpeg', '-i', video_note_path, '-q:a', '0', '-map', 'a', audio_path
-        ]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-        # Распознавание речи
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(audio_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="ru-RU")
-
-        # Отправка расшифрованного текста пользователю
-        await update.message.reply_text(f'Расшифровка видеосообщения: {text}')
-
-        # Очистка временных файлов
-        os.remove(video_note_path)
-        os.remove(audio_path)
-
-    except Exception as e:
-        logger.error(f'Ошибка обработки видеосообщения: {e}')
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
 def main() -> None:
