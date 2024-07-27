@@ -75,7 +75,7 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
 
-        await update.message.reply_text(f'Расшифровка видеосообщения: {text}')
+        await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{text}_', parse_mode='Markdown')
 
         os.remove(video_path)
         os.remove(wav_path)
@@ -200,7 +200,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
 
-        await update.message.reply_text(f'Расшифровка голосового сообщения: {text}')
+        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{text}_', parse_mode='Markdown')
 
         os.remove(audio_path)
         os.remove(wav_path)
