@@ -164,8 +164,24 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        logger.info(f'ffmpeg output: {process.stdout}')
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+
+        progress = 0
+        for line in process.stderr:
+            logger.info(f'ffmpeg output: {line.strip()}')
+
+            match_out_time = re.search(r'out_time_ms=(\d+)', line)
+            match_duration = re.search(r'duration=(\d+)', line)
+            if match_out_time and match_duration:
+                out_time_ms = int(match_out_time.group(1))
+                duration_ms = int(match_duration.group(1))
+                new_progress = (out_time_ms / duration_ms) * 100
+                if new_progress - progress >= 5:
+                    progress = new_progress
+                    await query.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
+
+        process.wait()
+        logger.info(f'Конвертация завершена: {output_path}')
 
         with open(output_path, 'rb') as audio:
             await query.message.reply_voice(audio)
@@ -233,3 +249,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+        
