@@ -2,6 +2,7 @@ import logging
 import tempfile
 import os
 import subprocess
+import re
 import speech_recognition as sr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
@@ -56,6 +57,43 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
+async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        # Получение файла видеосообщения
+        video_note_file = update.message.video_note.file_id
+        file = await context.bot.get_file(video_note_file)
+
+        # Сохранение файла временно
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+            video_path = temp_file.name
+        
+        # Загрузка файла
+        await file.download_to_drive(video_path)
+        logger.info(f'Видеосообщение загружено: {video_path}')
+
+        # Извлечение аудио и распознавание речи
+        wav_path = tempfile.mktemp(suffix=".wav")
+        command = [
+            'ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', wav_path
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+
+        # Отправка расшифрованного текста пользователю
+        await update.message.reply_text(f'Расшифровка видеосообщения: {text}')
+
+        # Очистка временных файлов
+        os.remove(video_path)
+        os.remove(wav_path)
+
+    except Exception as e:
+        logger.error(f'Ошибка обработки видеосообщения: {e}')
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -181,15 +219,15 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Сохранение файла временно
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
-            voice_path = temp_file.name
-
+            audio_path = temp_file.name
+        
         # Загрузка файла
-        await file.download_to_drive(voice_path)
-        logger.info(f'Голосовое сообщение загружено: {voice_path}')
+        await file.download_to_drive(audio_path)
+        logger.info(f'Голосовое сообщение загружено: {audio_path}')
 
-        # Конвертация ogg в wav для обработки
+        # Преобразование в формат, подходящий для распознавания
         wav_path = tempfile.mktemp(suffix=".wav")
-        audio = AudioSegment.from_file(voice_path)
+        audio = AudioSegment.from_ogg(audio_path)
         audio.export(wav_path, format="wav")
 
         # Распознавание речи
@@ -202,7 +240,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f'Расшифровка голосового сообщения: {text}')
 
         # Очистка временных файлов
-        os.remove(voice_path)
+        os.remove(audio_path)
         os.remove(wav_path)
 
     except Exception as e:
@@ -222,3 +260,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+    
