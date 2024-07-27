@@ -19,7 +19,7 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 user_state = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Привет! Отправь мне видео, и я предложу, что с ним можно сделать.')
+    await update.message.reply_text('Привет! Отправь мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.')
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -210,16 +210,54 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.error(f'Ошибка обработки голосового сообщения: {e}')
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
+async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        # Получение файла видеосообщения
+        video_note_file = update.message.video_note.file_id
+        file = await context.bot.get_file(video_note_file)
+
+        # Сохранение файла временно
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+            video_note_path = temp_file.name
+
+        # Загрузка файла
+        await file.download_to_drive(video_note_path)
+        logger.info(f'Видеосообщение загружено: {video_note_path}')
+
+        # Извлечение аудио из видеосообщения
+        audio_path = tempfile.mktemp(suffix=".wav")
+        command = [
+            'ffmpeg', '-i', video_note_path, '-q:a', '0', '-map', 'a', audio_path
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        # Распознавание речи
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(audio_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+
+        # Отправка расшифрованного текста пользователю
+        await update.message.reply_text(f'Расшифровка видеосообщения: {text}')
+
+        # Очистка временных файлов
+        os.remove(video_note_path)
+        os.remove(audio_path)
+
+    except Exception as e:
+        logger.error(f'Ошибка обработки видеосообщения: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
 if __name__ == '__main__':
     main()
-    
