@@ -3,9 +3,10 @@ import tempfile
 import os
 import subprocess
 import re
+import speech_recognition as sr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
-from PIL import Image
+from pydub import AudioSegment
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -173,14 +174,52 @@ async def get_video_dimensions(video_path: str) -> tuple:
     width, height = int(output[0]), int(output[1])
     return width, height
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        # Получение файла голосового сообщения
+        voice_file = update.message.voice.file_id
+        file = await context.bot.get_file(voice_file)
+
+        # Сохранение файла временно
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
+            voice_path = temp_file.name
+
+        # Загрузка файла
+        await file.download_to_drive(voice_path)
+        logger.info(f'Голосовое сообщение загружено: {voice_path}')
+
+        # Конвертация ogg в wav для обработки
+        wav_path = tempfile.mktemp(suffix=".wav")
+        audio = AudioSegment.from_file(voice_path)
+        audio.export(wav_path, format="wav")
+
+        # Распознавание речи
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+
+        # Отправка расшифрованного текста пользователю
+        await update.message.reply_text(f'Расшифровка голосового сообщения: {text}')
+
+        # Очистка временных файлов
+        os.remove(voice_path)
+        os.remove(wav_path)
+
+    except Exception as e:
+        logger.error(f'Ошибка обработки голосового сообщения: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+    
