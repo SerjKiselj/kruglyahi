@@ -3,8 +3,8 @@ import tempfile
 import os
 import subprocess
 import re
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from PIL import Image
 
 # Настройка логирования
@@ -14,17 +14,11 @@ logger = logging.getLogger(__name__)
 # Ваш токен, полученный от BotFather
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Привет! Отправь мне видео, и я конвертирую его в круглое видеосообщение.')
+# Хранение состояния пользователя
+user_state = {}
 
-async def get_video_dimensions(video_path: str) -> tuple:
-    command = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
-        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
-    ]
-    output = subprocess.check_output(command).decode().strip().split('\n')
-    width, height = int(output[0]), int(output[1])
-    return width, height
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text('Привет! Отправь мне видео, и я предложу, что с ним можно сделать.')
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -32,7 +26,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
 
-        # Использование временного файла для загрузки видео
+        # Сохранение файла временно
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
             video_path = temp_file.name
         
@@ -47,6 +41,42 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             os.remove(video_path)
             return
 
+        # Сохранение состояния пользователя
+        user_state[update.message.from_user.id] = video_path
+
+        # Предложение пользователю выбора
+        keyboard = [
+            [
+                InlineKeyboardButton("Сделать видеосообщение", callback_data='video_note'),
+                InlineKeyboardButton("Сделать голосовое сообщение", callback_data='voice_message')
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text('Что вы хотите сделать с видео?', reply_markup=reply_markup)
+
+    except Exception as e:
+        logger.error(f'Ошибка обработки видео: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    await query.answer()
+
+    if user_id not in user_state:
+        await query.edit_message_text(text="Видео не найдено, пожалуйста, отправьте видео ещё раз.")
+        return
+
+    video_path = user_state[user_id]
+
+    if query.data == 'video_note':
+        await create_video_note_and_send(query, context, video_path)
+    elif query.data == 'voice_message':
+        await create_voice_message_and_send(query, context, video_path)
+
+async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+    try:
         # Определение размеров видео
         width, height = await get_video_dimensions(video_path)
         logger.info(f'Размеры исходного видео: {width}x{height}')
@@ -71,9 +101,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Запуск конвертации
         process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
-        # Отправка сообщения о начале конвертации
-        await update.message.reply_text('Конвертация началась!')
-
         progress = 0
         for line in process.stderr:
             logger.info(f'ffmpeg output: {line.strip()}')
@@ -87,7 +114,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 new_progress = (out_time_ms / duration_ms) * 100
                 if new_progress - progress >= 5:  # Обновляем только если прогресс изменился на 5%
                     progress = new_progress
-                    await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
+                    await query.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
 
         # Завершение процесса и проверка результата
         process.wait()
@@ -95,24 +122,63 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Отправка сконвертированного видео
         with open(output_path, 'rb') as video:
-            await update.message.reply_video_note(video)
+            await query.message.reply_video_note(video)
 
         # Очистка временных файлов
         os.remove(video_path)
         os.remove(output_path)
 
         # Сообщение о завершении
-        await update.message.reply_text('Конвертация завершена!')
+        await query.message.reply_text('Конвертация завершена!')
     
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}')
-        await update.message.reply_text(f'Произошла ошибка: {e}')
+        await query.message.reply_text(f'Произошла ошибка: {e}')
+
+async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+    try:
+        # Использование временного файла для выходного аудио
+        output_path = tempfile.mktemp(suffix=".ogg")
+
+        # Команда для извлечения аудио
+        command = [
+            'ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path
+        ]
+
+        # Запуск извлечения аудио
+        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logger.info(f'ffmpeg output: {process.stdout}')
+
+        # Отправка аудиосообщения
+        with open(output_path, 'rb') as audio:
+            await query.message.reply_voice(audio)
+
+        # Очистка временных файлов
+        os.remove(video_path)
+        os.remove(output_path)
+
+        # Сообщение о завершении
+        await query.message.reply_text('Создание голосового сообщения завершено!')
+    
+    except Exception as e:
+        logger.error(f'Ошибка обработки видео: {e}')
+        await query.message.reply_text(f'Произошла ошибка: {e}')
+
+async def get_video_dimensions(video_path: str) -> tuple:
+    command = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+    ]
+    output = subprocess.check_output(command).decode().strip().split('\n')
+    width, height = int(output[0]), int(output[1])
+    return width, height
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
