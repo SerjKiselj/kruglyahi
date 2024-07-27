@@ -30,7 +30,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        await update.message.reply_text("Начинается процесс конвертации видео...")
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
 
