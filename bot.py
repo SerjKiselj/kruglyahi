@@ -73,26 +73,8 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', wav_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-
-        await update.message.reply_text("Конвертация видеосообщения в аудио...")
-        
-        progress = 0
-        for line in process.stderr:
-            logger.info(f'ffmpeg output: {line.strip()}')
-
-            match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            match_duration = re.search(r'duration=(\d+)', line)
-            if match_out_time and match_duration:
-                out_time_ms = int(match_out_time.group(1))
-                duration_ms = int(match_duration.group(1))
-                new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 5:
-                    progress = new_progress
-                    await update.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
-
-        process.wait()
-        logger.info(f'Конвертация завершена: {wav_path}')
+        await update.message.reply_text('Конвертация видеосообщения в аудио...')
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
@@ -150,7 +132,6 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
         process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
         progress = 0
-        await query.message.reply_text("Конвертация видео в видеосообщение...")
         for line in process.stderr:
             logger.info(f'ffmpeg output: {line.strip()}')
 
@@ -184,25 +165,9 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-
-        progress = 0
-        await query.message.reply_text("Конвертация видео в голосовое сообщение...")
-        for line in process.stderr:
-            logger.info(f'ffmpeg output: {line.strip()}')
-
-            match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            match_duration = re.search(r'duration=(\d+)', line)
-            if match_out_time and match_duration:
-                out_time_ms = int(match_out_time.group(1))
-                duration_ms = int(match_duration.group(1))
-                new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 5:
-                    progress = new_progress
-                    await query.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
-
-        process.wait()
-        logger.info(f'Конвертация завершена: {output_path}')
+        await query.message.reply_text('Конвертация видео в аудио...')
+        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logger.info(f'ffmpeg output: {process.stdout}')
 
         with open(output_path, 'rb') as audio:
             await query.message.reply_voice(audio)
@@ -210,17 +175,51 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         os.remove(video_path)
         os.remove(output_path)
 
-        await query.message.reply_text('Конвертация завершена!')
-
+        await query.message.reply_text('Создание голосового сообщения завершено!')
+    
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}')
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
-async def get_video_dimensions(video_path):
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    width, height = map(int, result.stdout.strip().split('x'))
+async def get_video_dimensions(video_path: str) -> tuple:
+    command = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+    ]
+    output = subprocess.check_output(command).decode().strip().split('\n')
+    width, height = int(output[0]), int(output[1])
     return width, height
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        voice_file = update.message.voice.file_id
+        file = await context.bot.get_file(voice_file)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
+            audio_path = temp_file.name
+        
+        await file.download_to_drive(audio_path)
+        logger.info(f'Голосовое сообщение загружено: {audio_path}')
+
+        wav_path = tempfile.mktemp(suffix=".wav")
+        audio = AudioSegment.from_ogg(audio_path)
+        audio.export(wav_path, format="wav")
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+
+        punctuated_text = add_punctuation(text)
+
+        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
+
+        os.remove(audio_path)
+        os.remove(wav_path)
+    
+    except Exception as e:
+        logger.error(f'Ошибка обработки голосового сообщения: {e}')
+        await update.message.reply_text(f'Произошла ошибка: {e}')
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
@@ -228,10 +227,10 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-    
