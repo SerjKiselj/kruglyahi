@@ -19,13 +19,12 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 user_state = {}
 
 def add_punctuation(text):
-    # Добавление базовой пунктуации с помощью регулярных выражений
+    # Пример базовой функции для добавления пунктуации
+    text = re.sub(r'(\s+)', ' ', text)  # Удаление лишних пробелов
     text = re.sub(r'([а-яА-Я])([А-Я])', r'\1. \2', text)  # Точка перед заглавной буквой
     text = re.sub(r'([а-яА-Я])([0-9])', r'\1, \2', text)  # Запятая перед числом
     text = re.sub(r'(\d)([а-яА-Я])', r'\1. \2', text)    # Точка после числа
     text = re.sub(r'([.!?])([а-яА-Я])', r'\1 \2', text)  # Пробел после знаков препинания
-    text = re.sub(r'([а-яА-Я])([а-я][А-Я])', r'\1. \2', text)  # Точка перед именем
-    text = re.sub(r'(\s+)', ' ', text)  # Удаление лишних пробелов
     return text.strip()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
