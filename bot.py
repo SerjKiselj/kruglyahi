@@ -18,6 +18,13 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 # Хранение состояния пользователя
 user_state = {}
 
+def add_punctuation(text):
+    # Пример простого добавления пунктуации
+    text = re.sub(r'([а-яА-Я])([А-Я])', r'\1. \2', text)  # Добавление точки перед заглавной буквой
+    text = re.sub(r'([а-яА-Я])([0-9])', r'\1, \2', text)  # Добавление запятой перед числом
+    text = re.sub(r'(\d)([а-яА-Я])', r'\1. \2', text)    # Добавление точки после числа
+    return text
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.'
@@ -75,7 +82,10 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
 
-        await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{text}_', parse_mode='Markdown')
+        # Добавление пунктуации
+        punctuated_text = add_punctuation(text)
+
+        await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
         os.remove(video_path)
         os.remove(wav_path)
@@ -200,7 +210,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
 
-        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{text}_', parse_mode='Markdown')
+        # Добавление пунктуации
+        punctuated_text = add_punctuation(text)
+
+        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
         os.remove(audio_path)
         os.remove(wav_path)
