@@ -112,6 +112,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
+        await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
+        
         width, height = await get_video_dimensions(video_path)
         logger.info(f'Размеры исходного видео: {width}x{height}')
 
@@ -126,26 +128,10 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
             '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
             '-c:a', 'aac', '-b:a', '128k', '-shortest',
-            '-progress', '-', output_path
+            output_path
         ]
 
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-
-        progress = 0
-        for line in process.stderr:
-            logger.info(f'ffmpeg output: {line.strip()}')
-
-            match_out_time = re.search(r'out_time_ms=(\d+)', line)
-            match_duration = re.search(r'duration=(\d+)', line)
-            if match_out_time and match_duration:
-                out_time_ms = int(match_out_time.group(1))
-                duration_ms = int(match_duration.group(1))
-                new_progress = (out_time_ms / duration_ms) * 100
-                if new_progress - progress >= 5:
-                    progress = new_progress
-                    await query.message.reply_text(f'Конвертация в процессе... Прогресс: {progress:.2f}%')
-
-        process.wait()
+        subprocess.run(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
         logger.info(f'Конвертация завершена: {output_path}')
 
         with open(output_path, 'rb') as video:
@@ -162,11 +148,12 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
 
 async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
+        await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
+        
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        await query.message.reply_text('Конвертация видео в аудио...')
-        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         logger.info(f'ffmpeg output: {process.stdout}')
 
         with open(output_path, 'rb') as audio:
