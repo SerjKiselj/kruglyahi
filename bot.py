@@ -29,7 +29,7 @@ def add_punctuation(text):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.debug(f'Команда /start от пользователя {update.message.from_user.id}')
     await update.message.reply_text(
-        'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.'
+        'Привет, я могу сделать из видео кружок или голосовое сообщение, а так же у меня есть расшифровка этих же кружков и гс.'
     )
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,12 +55,12 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         keyboard = [
             [
-                InlineKeyboardButton("Сделать видеосообщение", callback_data='video_note'),
-                InlineKeyboardButton("Сделать голосовое сообщение", callback_data='voice_message')
+                InlineKeyboardButton("Кружок", callback_data='video_note'),
+                InlineKeyboardButton("Голосовое", callback_data='voice_message')
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text('Что вы хотите сделать с видео?', reply_markup=reply_markup)
+        await update.message.reply_text('Что вы хотите сделать?', reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
@@ -69,7 +69,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         logger.debug(f'Получено видеосообщение от пользователя {update.message.from_user.id}')
-        await update.message.reply_text("Начинается процесс конвертации видеосообщения в аудио...")
+        await update.message.reply_text("Начинается расшифровка кружка в текст...")
         video_note_file = update.message.video_note.file_id
         file = await context.bot.get_file(video_note_file)
 
@@ -84,7 +84,7 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         total_duration = await get_video_duration(video_path)
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-        status_message = await update.message.reply_text('Начинается процесс конвертации видеосообщения в аудио...')
+        status_message = await update.message.reply_text('Начинается расшифровка в текст...')
         
         # Отображение прогресса
         while process.poll() is None:
@@ -93,9 +93,9 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация видеосообщения в аудио: {percent}%')
+                await status_message.edit_text(f'Слушаю кружок: {percent}%')
 
-        await status_message.edit_text('Конвертация завершена!')
+        await status_message.edit_text('Расшифровка завершена!')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
@@ -136,8 +136,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
-        logger.debug(f'Начинается процесс конвертации видео в видеосообщение: {video_path}')
-        status_message = await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
+        logger.debug(f'Начинается конвертация видео в кружок: {video_path}')
+        status_message = await query.message.reply_text('Начинается конвертация видео в кружок...')
         
         width, height = await get_video_dimensions(video_path)
         logger.debug(f'Размеры исходного видео: {width}x{height}')
@@ -166,7 +166,7 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
+                await status_message.edit_text(f'Скругляю видео: {percent}%')
 
         await status_message.edit_text('Конвертация завершена!')
 
@@ -182,8 +182,8 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
 
 async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
-        logger.debug(f'Начинается процесс конвертации видео в голосовое сообщение: {video_path}')
-        status_message = await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
+        logger.debug(f'Начинается конвертация видео в голосовое сообщение: {video_path}')
+        status_message = await query.message.reply_text('Начинается конвертация видео в голосовое сообщение...')
         
         output_path = tempfile.mktemp(suffix=".ogg")
 
@@ -198,7 +198,7 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
+                await status_message.edit_text(f'Вытаскиваю звук из видео: {percent}%')
 
         await status_message.edit_text('Конвертация завершена!')
 
@@ -237,7 +237,7 @@ def calculate_progress(current_time, total_duration):
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
-        status_message = await update.message.reply_text('Начинается процесс конвертации голосового сообщения...')
+        status_message = await update.message.reply_text('Начинается расшифровка голосового сообщения...')
 
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
@@ -260,7 +260,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация голосового сообщения: {percent}%')
+                await status_message.edit_text(f'Слушаю гс: {percent}%')
 
         await status_message.edit_text('Конвертация завершена!')
 
