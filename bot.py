@@ -3,9 +3,10 @@ import os
 import re
 import subprocess
 import tempfile
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import speech_recognition as sr
+from moviepy.editor import VideoFileClip
 
 # Устанавливаем логирование
 logging.basicConfig(level=logging.DEBUG)
@@ -26,7 +27,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     total_duration = await get_video_duration(video_path)
 
     await create_video_note_and_send(update, context, video_path, total_duration)
-    await create_voice_message_and_send(update, context, video_path, total_duration)
+    await transcribe_video_to_text_and_send(update, context, video_path)
 
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     video_note = update.message.video_note
@@ -38,7 +39,7 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
     total_duration = await get_video_duration(video_path)
 
     await create_video_note_and_send(update, context, video_path, total_duration)
-    await create_voice_message_and_send(update, context, video_path, total_duration)
+    await transcribe_video_to_text_and_send(update, context, video_path)
 
 async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str, total_duration: float) -> None:
     try:
@@ -54,7 +55,7 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         
         while process.poll() is None:
             output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            match = re.search(r'time=(\d+:\д+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
@@ -73,32 +74,33 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
-async def create_voice_message_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str, total_duration: float) -> None:
+async def transcribe_video_to_text_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
-        logger.debug(f'Начинается процесс конвертации видео в голосовое сообщение: {video_path}')
-        status_message = await update.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
-        
-        output_path = tempfile.mktemp(suffix=".ogg")
-        command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                if status_message.text != f'Конвертация видео в голосовое сообщение: {percent}%':
-                    await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
+        logger.debug(f'Начинается процесс расшифровки видео в текст: {video_path}')
+        status_message = await update.message.reply_text('Начинается процесс расшифровки видео в текст...')
 
-        await status_message.edit_text('Конвертация завершена!')
+        audio_path = tempfile.mktemp(suffix=".wav")
 
-        with open(output_path, 'rb') as audio:
-            await update.message.reply_voice(audio)
-        
-        os.remove(output_path)
-        logger.debug(f'Временный OGG файл удалён: {output_path}')
-    
+        # Извлечение аудио из видео
+        video_clip = VideoFileClip(video_path)
+        video_clip.audio.write_audiofile(audio_path, codec='pcm_s16le')
+        video_clip.close()
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(audio_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+        logger.debug(f'Распознанный текст: {text}')
+
+        # Добавление пунктуации
+        punctuated_text = add_punctuation(text)
+
+        await status_message.edit_text('Расшифровка завершена!')
+        await update.message.reply_text(f'*Расшифровка видео:*\n\n_{punctuated_text}_', parse_mode='Markdown')
+
+        os.remove(audio_path)
+        logger.debug(f'Временный WAV файл удалён: {audio_path}')
+
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
@@ -148,7 +150,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Отображение прогресса
         while process.poll() is None:
             output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            match = re.search(r'time=(\d+:\д+:\d+.\д+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
@@ -194,3 +196,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
