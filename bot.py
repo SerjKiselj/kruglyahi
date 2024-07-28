@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import asyncio
 import subprocess
 import tempfile
 from telegram import Update
@@ -50,17 +51,12 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         size = min(width, height)
         
         command = ['ffmpeg', '-i', video_path, '-vf', f'scale={size}:{size}:force_original_aspect_ratio=decrease,pad={size}:{size}:(ow-iw)/2:(oh-ih)/2', '-c:v', 'libx264', '-an', output_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        
-        while process.poll() is None:
-            try:
-                stdout, stderr = process.communicate(timeout=120)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
-                return
-            
-            output = stderr
+        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+
+        while True:
+            output = await process.stderr.readline()
+            if not output:
+                break
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -68,6 +64,7 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
                 if status_message.text != f'Конвертация видео в видеосообщение: {percent}%':
                     await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
 
+        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as video_note:
@@ -87,24 +84,20 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
         
         output_path = tempfile.mktemp(suffix=".ogg")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        
-        while process.poll() is None:
-            try:
-                stdout, stderr = process.communicate(timeout=120)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
-                return
-            
-            output = stderr
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+
+        while True:
+            output = await process.stderr.readline()
+            if not output:
+                break
+            match = re.search(r'time=(\d+:\д+:\д+.\д+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
                 if status_message.text != f'Конвертация видео в голосовое сообщение: {percent}%':
                     await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
 
+        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as audio:
@@ -155,27 +148,23 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', ogg_path, wav_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
         total_duration = await get_video_duration(ogg_path)
 
         # Отображение прогресса
-        while process.poll() is None:
-            try:
-                stdout, stderr = process.communicate(timeout=120)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
-                return
-            
-            output = stderr
-            match = re.search(r'time=(\d+:\d+:\д+.\д+)', output)
+        while True:
+            output = await process.stderr.readline()
+            if not output:
+                break
+            match = re.search(r'time=(\d+:\д+:\д+.\д+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
                 if status_message.text != f'Конвертация голосового сообщения: {percent}%':
                     await status_message.edit_text(f'Конвертация голосового сообщения: {percent}%')
 
+        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         recognizer = sr.Recognizer()
@@ -215,3 +204,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
