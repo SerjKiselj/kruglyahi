@@ -1,16 +1,18 @@
 import logging
-import tempfile
 import os
-import subprocess
 import re
-import speech_recognition as sr
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+import subprocess
+import tempfile
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application, CallbackQueryHandler, CommandHandler, ContextTypes,
+    MessageHandler, filters
+)
 from pydub import AudioSegment
-from pydub.effects import normalize, strip_silence
+import speech_recognition as sr
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Ваш токен, полученный от BotFather
@@ -34,8 +36,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
-            video_path = temp_file.name
+        video_path = os.path.join('video_storage', f"{video_file}.mp4")
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
         
         await file.download_to_drive(video_path)
         logger.info(f'Видео загружено: {video_path}')
@@ -58,7 +60,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text('Что вы хотите сделать с видео?', reply_markup=reply_markup)
 
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}')
+        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -67,9 +69,9 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         video_note_file = update.message.video_note.file_id
         file = await context.bot.get_file(video_note_file)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
-            video_path = temp_file.name
-        
+        video_path = os.path.join('video_storage', f"{video_note_file}.mp4")
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
+
         await file.download_to_drive(video_path)
         logger.info(f'Видеосообщение загружено: {video_path}')
 
@@ -87,11 +89,10 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
-        os.remove(video_path)
         os.remove(wav_path)
 
     except Exception as e:
-        logger.error(f'Ошибка обработки видеосообщения: {e}')
+        logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -138,13 +139,12 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
         with open(output_path, 'rb') as video:
             await query.message.reply_video_note(video)
 
-        os.remove(video_path)
         os.remove(output_path)
 
         await query.message.reply_text('Конвертация завершена!')
     
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}')
+        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
 async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
@@ -160,13 +160,12 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         with open(output_path, 'rb') as audio:
             await query.message.reply_voice(audio)
 
-        os.remove(video_path)
         os.remove(output_path)
 
         await query.message.reply_text('Создание голосового сообщения завершено!')
     
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}')
+        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
 async def get_video_dimensions(video_path: str) -> tuple:
@@ -184,55 +183,42 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
-            audio_path = temp_file.name
-        
+        audio_path = os.path.join('audio_storage', f"{voice_file}.ogg")
+        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+
         await file.download_to_drive(audio_path)
         logger.info(f'Голосовое сообщение загружено: {audio_path}')
 
         wav_path = tempfile.mktemp(suffix=".wav")
         audio = AudioSegment.from_ogg(audio_path)
-
-        # Применение нормализации и удаление тишины
-        audio = normalize(audio)
-        audio = strip_silence(audio, silence_len=1000, silence_thresh=-40)
-
         audio.export(wav_path, format="wav")
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
-
-            # Использование нескольких API для распознавания
-            try:
-                text = recognizer.recognize_google(audio_data, language="ru-RU")
-            except sr.RequestError:
-                try:
-                    text = recognizer.recognize_ibm(audio_data, username='YOUR_IBM_USERNAME', password='YOUR_IBM_PASSWORD')
-                except sr.RequestError:
-                    text = "Ошибка распознавания речи всеми сервисами."
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
 
         punctuated_text = add_punctuation(text)
 
         await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
-        os.remove(audio_path)
         os.remove(wav_path)
-    
+
     except Exception as e:
-        logger.error(f'Ошибка обработки голосового сообщения: {e}')
-        await update.message.reply_text(f'Произшла ошибка: {e}')
+        logger.error(f'Ошибка распознавания голоса: {e}', exc_info=True)
+        await update.message.reply_text(f'Произошла ошибка: {e}')
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+    
