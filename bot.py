@@ -20,6 +20,7 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 # Хранение состояния пользователя
 user_state = {}
+user_stats = {}
 
 def add_punctuation(text):
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
@@ -39,9 +40,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.debug(f'Команда "О боте" от пользователя {update.message.from_user.id}')
+    keyboard = [
+        [InlineKeyboardButton("Статистика", callback_data='statistics')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        'Я бот, который помогает преобразовывать видео в круглые видеосообщения или голосовые сообщения, а также расшифровывать их в текст.'
+        'Я бот, который помогает преобразовывать видео в круглые видеосообщения или голосовые сообщения, а также расшифровывать их в текст.',
+        reply_markup=reply_markup
     )
+
+async def statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    stats = user_stats.get(user_id, {
+        'video_to_note': 0,
+        'video_to_voice': 0,
+        'video_note_to_text': 0,
+        'voice_to_text': 0
+    })
+    
+    stats_message = (
+        f'Статистика использования бота:\n'
+        f'Видео конвертировано в видеосообщения: {stats["video_to_note"]}\n'
+        f'Видео конвертировано в голосовые сообщения: {stats["video_to_voice"]}\n'
+        f'Видеосообщения расшифрованы в текст: {stats["video_note_to_text"]}\n'
+        f'Голосовые сообщения расшифрованы в текст: {stats["voice_to_text"]}'
+    )
+    await query.edit_message_text(stats_message)
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -122,6 +149,17 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         os.remove(wav_path)
         logger.debug(f'Временный WAV файл удалён: {wav_path}')
 
+        # Обновление статистики
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['video_note_to_text'] += 1
+
     except Exception as e:
         logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
@@ -158,13 +196,10 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
         y_offset = (height - crop_size) // 2
 
         output_path = tempfile.mktemp(suffix=".mp4")
-        
         command = [
-            'ffmpeg', '-i', video_path,
-            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest',
-            output_path
+            'ffmpeg', '-i', video_path, '-vf',
+            f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=640:640',
+            '-c:v', 'libx264', '-crf', '23', '-preset', 'fast', output_path
         ]
 
         total_duration = await get_video_duration(video_path)
@@ -185,8 +220,19 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             await query.message.reply_video_note(video)
 
         os.remove(output_path)
-        logger.debug(f'Временный MP4 файл удалён: {output_path}')
-    
+        logger.debug(f'Временный файл видеосообщения удалён: {output_path}')
+
+        # Обновление статистики
+        user_id = query.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['video_to_note'] += 1
+
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await query.message.reply_text(f'Произошла ошибка: {e}')
@@ -218,6 +264,17 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         
         os.remove(ogg_path)
         logger.debug(f'Временный OGG файл удалён: {ogg_path}')
+
+        # Обновление статистики
+        user_id = query.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['video_to_voice'] += 1
 
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
@@ -252,7 +309,18 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         os.remove(wav_path)
         logger.debug(f'Временный WAV файл удалён: {wav_path}')
-    
+        
+        # Обновление статистики
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['voice_to_text'] += 1
+
     except Exception as e:
         logger.error(f'Ошибка обработки голосового сообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
@@ -286,7 +354,18 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         os.remove(wav_path)
         logger.debug(f'Временный WAV файл удалён: {wav_path}')
-    
+        
+        # Обновление статистики
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['voice_to_text'] += 1
+
     except Exception as e:
         logger.error(f'Ошибка обработки аудиосообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
@@ -323,9 +402,10 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.AUDIO, handle_audio))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex('О боте'), about))
+    application.add_handler(CallbackQueryHandler(statistics, pattern='statistics'))
 
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
+    
