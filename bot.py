@@ -143,13 +143,17 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             output_path
         ]
 
+        total_duration = await get_video_duration(video_path)
         process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
         
         # Отображение прогресса
         while process.poll() is None:
             output = process.stderr.readline()
-            if 'frame=' in output:
-                await status_message.edit_text(f'Конвертация видео в видеосообщение...\n{output.strip()}')
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
 
         await status_message.edit_text('Конвертация завершена!')
 
@@ -171,13 +175,17 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
+        total_duration = await get_video_duration(video_path)
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         
         # Отображение прогресса
         while process.poll() is None:
             output = process.stderr.readline()
-            if 'size=' in output:
-                await status_message.edit_text(f'Конвертация видео в голосовое сообщение...\n{output.strip()}')
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
 
         await status_message.edit_text('Создание голосового сообщения завершено!')
 
@@ -191,13 +199,27 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
-async def get_video_dimensions(video_path: str) -> tuple:
+async def get_video_dimensions(video_path):
     logger.debug(f'Получение размеров видео: {video_path}')
     command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     width, height = map(int, result.stdout.strip().split('x'))
     logger.debug(f'Полученные размеры видео: {width}x{height}')
     return width, height
+
+async def get_video_duration(video_path):
+    logger.debug(f'Получение длительности видео: {video_path}')
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    duration = float(result.stdout.strip())
+    logger.debug(f'Длительность видео: {duration} секунд')
+    return duration
+
+def calculate_progress(current_time, total_duration):
+    time_parts = list(map(float, re.split('[:.]', current_time)))
+    current_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2] + time_parts[3] / 100
+    percent = int((current_seconds / total_duration) * 100)
+    return percent
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -250,4 +272,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-        
+    
