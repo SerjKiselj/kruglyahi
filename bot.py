@@ -3,10 +3,9 @@ import os
 import re
 import subprocess
 import tempfile
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import speech_recognition as sr
-from moviepy.editor import VideoFileClip
 
 # Устанавливаем логирование
 logging.basicConfig(level=logging.DEBUG)
@@ -24,10 +23,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
     await video_file.download_to_drive(video_path)
 
-    total_duration = await get_video_duration(video_path)
-
-    await create_video_note_and_send(update, context, video_path, total_duration)
-    await transcribe_video_to_text_and_send(update, context, video_path)
+    await transcribe_video_to_text(update, context, video_path)
 
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     video_note = update.message.video_note
@@ -36,55 +32,31 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
     await video_file.download_to_drive(video_path)
 
-    total_duration = await get_video_duration(video_path)
+    await transcribe_video_to_text(update, context, video_path)
 
-    await create_video_note_and_send(update, context, video_path, total_duration)
-    await transcribe_video_to_text_and_send(update, context, video_path)
-
-async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str, total_duration: float) -> None:
-    try:
-        logger.debug(f'Начинается процесс конвертации видео в видеосообщение: {video_path}')
-        status_message = await update.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
-        
-        output_path = tempfile.mktemp(suffix=".mp4")
-        width, height = await get_video_dimensions(video_path)
-        size = min(width, height)
-        
-        command = ['ffmpeg', '-i', video_path, '-vf', f'scale={size}:{size}:force_original_aspect_ratio=decrease,pad={size}:{size}:(ow-iw)/2:(oh-ih)/2', '-c:v', 'libx264', '-an', output_path]
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\д+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                if status_message.text != f'Конвертация видео в видеосообщение: {percent}%':
-                    await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
-
-        await status_message.edit_text('Конвертация завершена!')
-
-        with open(output_path, 'rb') as video_note:
-            await update.message.reply_video_note(video_note)
-        
-        os.remove(output_path)
-        logger.debug(f'Временный MP4 файл удалён: {output_path}')
-    
-    except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def transcribe_video_to_text_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+async def transcribe_video_to_text(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
         logger.debug(f'Начинается процесс расшифровки видео в текст: {video_path}')
         status_message = await update.message.reply_text('Начинается процесс расшифровки видео в текст...')
-
+        
+        # Извлекаем аудио из видео
         audio_path = tempfile.mktemp(suffix=".wav")
+        command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', audio_path]
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
-        # Извлечение аудио из видео
-        video_clip = VideoFileClip(video_path)
-        video_clip.audio.write_audiofile(audio_path, codec='pcm_s16le')
-        video_clip.close()
+        # Получение длительности видео для прогресса
+        total_duration = await get_video_duration(video_path)
+
+        while process.poll() is None:
+            output = process.stderr.readline()
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                if status_message.text != f'Конвертация видео в аудио: {percent}%':
+                    await status_message.edit_text(f'Конвертация видео в аудио: {percent}%')
+
+        await status_message.edit_text('Конвертация завершена!')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(audio_path) as source:
@@ -95,37 +67,14 @@ async def transcribe_video_to_text_and_send(update: Update, context: ContextType
         # Добавление пунктуации
         punctuated_text = add_punctuation(text)
 
-        await status_message.edit_text('Расшифровка завершена!')
-        await update.message.reply_text(f'*Расшифровка видео:*\n\n_{punctuated_text}_', parse_mode='Markdown')
+        await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
         os.remove(audio_path)
-        logger.debug(f'Временный WAV файл удалён: {audio_path}')
+        logger.debug(f'Временный аудиофайл удалён: {audio_path}')
 
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
+        logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def get_video_dimensions(video_path):
-    logger.debug(f'Получение размеров видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    width, height = map(int, result.stdout.strip().split('x'))
-    logger.debug(f'Полученные размеры видео: {width}x{height}')
-    return width, height
-
-async def get_video_duration(video_path):
-    logger.debug(f'Получение длительности видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    duration = float(result.stdout.strip())
-    logger.debug(f'Длительность видео: {duration} секунд')
-    return duration
-
-def calculate_progress(current_time, total_duration):
-    time_parts = list(map(float, re.split('[:.]', current_time)))
-    current_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2] + time_parts[3] / 100
-    percent = int((current_seconds / total_duration) * 100)
-    return percent
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -145,12 +94,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         command = ['ffmpeg', '-i', ogg_path, wav_path]
         process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
-        total_duration = await get_video_duration(ogg_path)
+        total_duration = await get_audio_duration(ogg_path)
 
-        # Отображение прогресса
         while process.poll() is None:
             output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\д+:\d+.\д+)', output)
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
@@ -165,7 +113,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             text = recognizer.recognize_google(audio_data, language="ru-RU")
         logger.debug(f'Распознанный текст: {text}')
 
-        # Добавление пунктуации
         punctuated_text = add_punctuation(text)
 
         await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
@@ -176,6 +123,28 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.error(f'Ошибка обработки голосового сообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
+
+async def get_video_duration(video_path):
+    logger.debug(f'Получение длительности видео: {video_path}')
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    duration = float(result.stdout.strip())
+    logger.debug(f'Длительность видео: {duration} секунд')
+    return duration
+
+async def get_audio_duration(audio_path):
+    logger.debug(f'Получение длительности аудио: {audio_path}')
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    duration = float(result.stdout.strip())
+    logger.debug(f'Длительность аудио: {duration} секунд')
+    return duration
+
+def calculate_progress(current_time, total_duration):
+    time_parts = list(map(float, re.split('[:.]', current_time)))
+    current_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2] + time_parts[3] / 100
+    percent = int((current_seconds / total_duration) * 100)
+    return percent
 
 def add_punctuation(text):
     punctuated_text = re.sub(r'([а-яё])([А-ЯЁ])', r'\1. \2', text)
@@ -196,4 +165,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
