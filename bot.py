@@ -81,8 +81,21 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', wav_path]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        logger.debug(f'Видео конвертировано в WAV: {wav_path}')
+        total_duration = await get_video_duration(video_path)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        status_message = await update.message.reply_text('Начинается процесс конвертации видеосообщения в аудио...')
+        
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация видеосообщения в аудио: {percent}%')
+
+        await status_message.edit_text('Конвертация завершена!')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
@@ -187,11 +200,11 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
                 percent = calculate_progress(current_time, total_duration)
                 await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
 
-        await status_message.edit_text('Создание голосового сообщения завершено!')
+        await status_message.edit_text('Конвертация завершена!')
 
-        with open(output_path, 'rb') as audio:
-            await query.message.reply_voice(audio)
-
+        with open(output_path, 'rb') as voice:
+            await query.message.reply_voice(voice)
+        
         os.remove(output_path)
         logger.debug(f'Временный OGG файл удалён: {output_path}')
     
