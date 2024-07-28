@@ -237,8 +237,19 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', ogg_path, wav_path]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        logger.debug(f'Голосовое сообщение конвертировано в WAV: {wav_path}')
+        total_duration = await get_video_duration(ogg_path)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация голосового сообщения: {percent}%')
+
+        await status_message.edit_text('Конвертация завершена!')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
@@ -272,4 +283,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-    
