@@ -1,11 +1,10 @@
 import logging
 import os
 import re
-import asyncio
 import subprocess
 import tempfile
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import speech_recognition as sr
 
 # Устанавливаем логирование
@@ -51,12 +50,10 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         size = min(width, height)
         
         command = ['ffmpeg', '-i', video_path, '-vf', f'scale={size}:{size}:force_original_aspect_ratio=decrease,pad={size}:{size}:(ow-iw)/2:(oh-ih)/2', '-c:v', 'libx264', '-an', output_path]
-        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-
-        while True:
-            output = await process.stderr.readline()
-            if not output:
-                break
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        
+        while process.poll() is None:
+            output = process.stderr.readline()
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -64,7 +61,6 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
                 if status_message.text != f'Конвертация видео в видеосообщение: {percent}%':
                     await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
 
-        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as video_note:
@@ -84,12 +80,10 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
         
         output_path = tempfile.mktemp(suffix=".ogg")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-
-        while True:
-            output = await process.stderr.readline()
-            if not output:
-                break
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        
+        while process.poll() is None:
+            output = process.stderr.readline()
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -97,7 +91,6 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
                 if status_message.text != f'Конвертация видео в голосовое сообщение: {percent}%':
                     await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
 
-        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as audio:
@@ -113,7 +106,7 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
 async def get_video_dimensions(video_path):
     logger.debug(f'Получение размеров видео: {video_path}')
     command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     width, height = map(int, result.stdout.strip().split('x'))
     logger.debug(f'Полученные размеры видео: {width}x{height}')
     return width, height
@@ -121,7 +114,7 @@ async def get_video_dimensions(video_path):
 async def get_video_duration(video_path):
     logger.debug(f'Получение длительности видео: {video_path}')
     command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     duration = float(result.stdout.strip())
     logger.debug(f'Длительность видео: {duration} секунд')
     return duration
@@ -148,15 +141,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', ogg_path, wav_path]
-        process = await asyncio.create_subprocess_exec(*command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
 
         total_duration = await get_video_duration(ogg_path)
 
         # Отображение прогресса
-        while True:
-            output = await process.stderr.readline()
-            if not output:
-                break
+        while process.poll() is None:
+            output = process.stderr.readline()
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -164,7 +155,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 if status_message.text != f'Конвертация голосового сообщения: {percent}%':
                     await status_message.edit_text(f'Конвертация голосового сообщения: {percent}%')
 
-        await process.wait()
         await status_message.edit_text('Конвертация завершена!')
 
         recognizer = sr.Recognizer()
@@ -204,4 +194,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
