@@ -124,7 +124,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
         logger.debug(f'Начинается процесс конвертации видео в видеосообщение: {video_path}')
-        await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
+        status_message = await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
         
         width, height = await get_video_dimensions(video_path)
         logger.debug(f'Размеры исходного видео: {width}x{height}')
@@ -143,16 +143,21 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             output_path
         ]
 
-        subprocess.run(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        logger.info(f'Конвертация завершена: {output_path}')
+        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            if 'frame=' in output:
+                await status_message.edit_text(f'Конвертация видео в видеосообщение...\n{output.strip()}')
+
+        await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as video:
             await query.message.reply_video_note(video)
 
         os.remove(output_path)
         logger.debug(f'Временный MP4 файл удалён: {output_path}')
-
-        await query.message.reply_text('Конвертация завершена!')
     
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
@@ -161,21 +166,26 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
 async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
         logger.debug(f'Начинается процесс конвертации видео в голосовое сообщение: {video_path}')
-        await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
+        status_message = await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
         
         output_path = tempfile.mktemp(suffix=".ogg")
 
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        logger.info(f'ffmpeg output: {process.stdout}')
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            if 'size=' in output:
+                await status_message.edit_text(f'Конвертация видео в голосовое сообщение...\n{output.strip()}')
+
+        await status_message.edit_text('Создание голосового сообщения завершено!')
 
         with open(output_path, 'rb') as audio:
             await query.message.reply_voice(audio)
 
         os.remove(output_path)
         logger.debug(f'Временный OGG файл удалён: {output_path}')
-
-        await query.message.reply_text('Создание голосового сообщения завершено!')
     
     except Exception as e:
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
@@ -183,18 +193,17 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
 
 async def get_video_dimensions(video_path: str) -> tuple:
     logger.debug(f'Получение размеров видео: {video_path}')
-    command = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
-        'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
-    ]
-    output = subprocess.check_output(command).decode().strip().split('\n')
-    width, height = int(output[0]), int(output[1])
-    logger.debug(f'Размеры видео: {width}x{height}')
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    width, height = map(int, result.stdout.strip().split('x'))
+    logger.debug(f'Полученные размеры видео: {width}x{height}')
     return width, height
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
+        status_message = await update.message.reply_text('Начинается процесс конвертации голосового сообщения...')
+
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
 
