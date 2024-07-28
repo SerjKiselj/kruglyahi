@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler, ContextTypes,
     MessageHandler, filters
@@ -29,19 +29,17 @@ def add_punctuation(text):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.debug(f'Команда /start от пользователя {update.message.from_user.id}')
     keyboard = [
-        [
-            InlineKeyboardButton("О боте", callback_data='about')
-        ]
+        [KeyboardButton("О боте")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(
         'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.',
         reply_markup=reply_markup
     )
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.debug(f'Команда /about от пользователя {update.message.from_user.id}')
-    await update.callback_query.message.reply_text(
+    logger.debug(f'Команда "О боте" от пользователя {update.message.from_user.id}')
+    await update.message.reply_text(
         'Я бот, который помогает преобразовывать видео в круглые видеосообщения или голосовые сообщения, а также расшифровывать их в текст.'
     )
 
@@ -135,10 +133,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.answer()
 
     logger.debug(f'Получен запрос кнопки от пользователя {user_id}: {query.data}')
-
-    if query.data == 'about':
-        await about(update, context)
-        return
 
     if user_id not in user_state:
         await query.edit_message_text(text="Видео не найдено, пожалуйста, отправьте видео ещё раз.")
@@ -323,11 +317,13 @@ def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('about', about))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.AUDIO, handle_audio))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex('О боте'), about))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
