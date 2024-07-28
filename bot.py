@@ -4,10 +4,7 @@ import re
 import subprocess
 import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    Application, CallbackQueryHandler, CommandHandler, ContextTypes,
-    MessageHandler, filters
-)
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from pydub import AudioSegment
 import speech_recognition as sr
 
@@ -18,8 +15,9 @@ logger = logging.getLogger(__name__)
 # Ваш токен, полученный от BotFather
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-# Хранение состояния пользователя
+# Хранение состояния пользователя и статистики
 user_state = {}
+user_stats = {}
 
 def add_punctuation(text):
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
@@ -29,8 +27,48 @@ def add_punctuation(text):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.debug(f'Команда /start от пользователя {update.message.from_user.id}')
     await update.message.reply_text(
-        'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.'
+        'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("О боте", callback_data='about')],
+            [InlineKeyboardButton("Топ пользователей", callback_data='top')]
+        ])
     )
+
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.callback_query.message.reply_text(
+        'Я бот, который помогает конвертировать видео в видеосообщения и голосовые сообщения, '
+        'а также расшифровывать видеосообщения и голосовые сообщения в текст.',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Статистика", callback_data='statistics')]
+        ])
+    )
+
+async def statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.callback_query.from_user.id
+    stats = user_stats.get(user_id, {
+        'video_to_note': 0,
+        'video_to_voice': 0,
+        'video_note_to_text': 0,
+        'voice_to_text': 0,
+        'points': 0
+    })
+    await update.callback_query.message.edit_text(
+        f"Ваша статистика:\n\n"
+        f"Конвертировано видео в видеосообщения: {stats['video_to_note']}\n"
+        f"Конвертировано видео в голосовые сообщения: {stats['video_to_voice']}\n"
+        f"Расшифровано видеосообщений: {stats['video_note_to_text']}\n"
+        f"Расшифровано голосовых сообщений: {stats['voice_to_text']}\n"
+        f"Очки: {stats['points']}"
+    )
+
+async def top_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    sorted_users = sorted(user_stats.items(), key=lambda x: x[1]['points'], reverse=True)
+    top_users_text = "Топ пользователей:\n\n"
+    for i, (user_id, stats) in enumerate(sorted_users[:10], start=1):
+        user = await context.bot.get_chat(user_id)
+        top_users_text += f"{i}. {user.full_name} - {stats['points']} очков\n"
+
+    await update.callback_query.message.reply_text(top_users_text)
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -111,6 +149,18 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         os.remove(wav_path)
         logger.debug(f'Временный WAV файл удалён: {wav_path}')
 
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0,
+                'points': 0
+            }
+        user_stats[user_id]['video_note_to_text'] += 1
+        user_stats[user_id]['points'] += 1
+
     except Exception as e:
         logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
@@ -133,111 +183,63 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await create_video_note_and_send(query, context, video_path)
     elif query.data == 'voice_message':
         await create_voice_message_and_send(query, context, video_path)
+    elif query.data == 'top':
+        await top_users(update, context)
 
-async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+async def create_video_note_and_send(query, context, video_path):
     try:
-        logger.debug(f'Начинается процесс конвертации видео в видеосообщение: {video_path}')
-        status_message = await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
-        
-        width, height = await get_video_dimensions(video_path)
-        logger.debug(f'Размеры исходного видео: {width}x{height}')
+        video_note_path = os.path.join('video_storage', f"{os.path.basename(video_path)}_note.mp4")
 
-        crop_size = min(width, height)
-        x_offset = (width - crop_size) // 2
-        y_offset = (height - crop_size) // 2
-
-        output_path = tempfile.mktemp(suffix=".mp4")
-        
         command = [
-            'ffmpeg', '-i', video_path,
-            '-vf', f'crop={crop_size}:{crop_size}:{x_offset}:{y_offset},scale=240:240,setsar=1:1,format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-b:v', '2M',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest',
-            output_path
+            'ffmpeg', '-i', video_path, '-vf', 'scale=240:240', '-c:v', 'libx264', '-crf', '23',
+            '-preset', 'ultrafast', '-c:a', 'aac', '-strict', 'experimental', '-r', '30', '-b:a', '64k',
+            video_note_path
         ]
+        subprocess.run(command, check=True)
+        logger.info(f'Видеосообщение создано: {video_note_path}')
 
-        total_duration = await get_video_duration(video_path)
-        process = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация видео в видеосообщение: {percent}%')
+        await context.bot.send_video_note(
+            chat_id=query.message.chat_id,
+            video_note=open(video_note_path, 'rb')
+        )
+        await query.edit_message_text(text="Ваше видео было успешно конвертировано в видеосообщение.")
 
-        await status_message.edit_text('Конвертация завершена!')
+        user_id = query.from_user.id
+        user_stats[user_id]['video_to_note'] += 1
+        user_stats[user_id]['points'] += 1
 
-        with open(output_path, 'rb') as video:
-            await query.message.reply_video_note(video)
-
-        os.remove(output_path)
-        logger.debug(f'Временный MP4 файл удалён: {output_path}')
-    
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
-        await query.message.reply_text(f'Произошла ошибка: {e}')
+        logger.error(f'Ошибка при создании видеосообщения: {e}', exc_info=True)
+        await query.edit_message_text(text=f'Произошла ошибка: {e}')
 
-async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+async def create_voice_message_and_send(query, context, video_path):
     try:
-        logger.debug(f'Начинается процесс конвертации видео в голосовое сообщение: {video_path}')
-        status_message = await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
-        
-        output_path = tempfile.mktemp(suffix=".ogg")
+        voice_message_path = os.path.join('video_storage', f"{os.path.basename(video_path)}.ogg")
 
-        command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_path]
-        total_duration = await get_video_duration(video_path)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация видео в голосовое сообщение: {percent}%')
+        command = [
+            'ffmpeg', '-i', video_path, '-vn', '-acodec', 'libopus', '-b:a', '64k', voice_message_path
+        ]
+        subprocess.run(command, check=True)
+        logger.info(f'Голосовое сообщение создано: {voice_message_path}')
 
-        await status_message.edit_text('Конвертация завершена!')
+        await context.bot.send_voice(
+            chat_id=query.message.chat_id,
+            voice=open(voice_message_path, 'rb')
+        )
+        await query.edit_message_text(text="Ваше видео было успешно конвертировано в голосовое сообщение.")
 
-        with open(output_path, 'rb') as voice:
-            await query.message.reply_voice(voice)
-        
-        os.remove(output_path)
-        logger.debug(f'Временный OGG файл удалён: {output_path}')
-    
+        user_id = query.from_user.id
+        user_stats[user_id]['video_to_voice'] += 1
+        user_stats[user_id]['points'] += 1
+
     except Exception as e:
-        logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
-        await query.message.reply_text(f'Произошла ошибка: {e}')
+        logger.error(f'Ошибка при создании голосового сообщения: {e}', exc_info=True)
+        await query.edit_message_text(text=f'Произошла ошибка: {e}')
 
-async def get_video_dimensions(video_path):
-    logger.debug(f'Получение размеров видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    width, height = map(int, result.stdout.strip().split('x'))
-    logger.debug(f'Полученные размеры видео: {width}x{height}')
-    return width, height
-
-async def get_video_duration(video_path):
-    logger.debug(f'Получение длительности видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    duration = float(result.stdout.strip())
-    logger.debug(f'Длительность видео: {duration} секунд')
-    return duration
-
-def calculate_progress(current_time, total_duration):
-    time_parts = list(map(float, re.split('[:.]', current_time)))
-    current_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2] + time_parts[3] / 100
-    percent = int((current_seconds / total_duration) * 100)
-    return percent
-
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
-        status_message = await update.message.reply_text('Начинается процесс конвертации голосового сообщения...')
+        await update.message.reply_text("Начинается процесс расшифровки голосового сообщения...")
 
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
@@ -250,19 +252,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', ogg_path, wav_path]
-        total_duration = await get_video_duration(ogg_path)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация голосового сообщения: {percent}%')
-
-        await status_message.edit_text('Конвертация завершена!')
+        subprocess.run(command, check=True)
+        logger.debug(f'Голосовое сообщение сконвертировано в WAV: {wav_path}')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
@@ -270,7 +261,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             text = recognizer.recognize_google(audio_data, language="ru-RU")
         logger.debug(f'Распознанный текст: {text}')
 
-        # Добавление пунктуации
         punctuated_text = add_punctuation(text)
 
         await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
@@ -278,21 +268,47 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         os.remove(wav_path)
         logger.debug(f'Временный WAV файл удалён: {wav_path}')
 
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0,
+                'points': 0
+            }
+        user_stats[user_id]['voice_to_text'] += 1
+        user_stats[user_id]['points'] += 1
+
     except Exception as e:
-        logger.error(f'Ошибка распознавания голоса: {e}', exc_info=True)
+        logger.error(f'Ошибка обработки голосового сообщения: {e}', exc_info=True)
         await update.message.reply_text(f'Произошла ошибка: {e}')
+
+def calculate_progress(current_time, total_duration):
+    current_parts = list(map(float, current_time.split(":")))
+    total_parts = list(map(float, total_duration.split(":")))
+    current_seconds = current_parts[0] * 3600 + current_parts[1] * 60 + current_parts[2]
+    total_seconds = total_parts[0] * 3600 + total_parts[1] * 60 + total_parts[2]
+    return int((current_seconds / total_seconds) * 100)
+
+async def get_video_duration(video_path):
+    command = ['ffmpeg', '-i', video_path]
+    result = subprocess.run(command, stderr=subprocess.PIPE, text=True)
+    duration_line = [x for x in result.stderr.split('\n') if 'Duration' in x]
+    duration_str = duration_line[0].split(',')[0].split('Duration: ')[1]
+    return duration_str.strip()
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
 
-    logger.info('Бот запущен')
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+        
