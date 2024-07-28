@@ -198,13 +198,13 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Вытаскиваю звук из видео: {percent}%')
+                await status_message.edit_text(f'Обрабатываю голосовое сообщение: {percent}%')
 
         await status_message.edit_text('Конвертация завершена!')
 
         with open(output_path, 'rb') as voice:
             await query.message.reply_voice(voice)
-        
+
         os.remove(output_path)
         logger.debug(f'Временный OGG файл удалён: {output_path}')
     
@@ -212,87 +212,38 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         logger.error(f'Ошибка обработки видео: {e}', exc_info=True)
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
-async def get_video_dimensions(video_path):
-    logger.debug(f'Получение размеров видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    width, height = map(int, result.stdout.strip().split('x'))
-    logger.debug(f'Полученные размеры видео: {width}x{height}')
-    return width, height
+def calculate_progress(current_time_str, total_duration_str):
+    current_time = parse_time(current_time_str)
+    total_duration = parse_time(total_duration_str)
+    return round((current_time / total_duration) * 100, 2)
+
+def parse_time(time_str):
+    hours, minutes, seconds = map(float, re.split('[:.]', time_str))
+    return hours * 3600 + minutes * 60 + seconds
 
 async def get_video_duration(video_path):
-    logger.debug(f'Получение длительности видео: {video_path}')
-    command = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    duration = float(result.stdout.strip())
-    logger.debug(f'Длительность видео: {duration} секунд')
-    return duration
+    result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                             '-of', 'default=noprint_wrappers=1:nokey=1', video_path],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return float(result.stdout)
 
-def calculate_progress(current_time, total_duration):
-    time_parts = list(map(float, re.split('[:.]', current_time)))
-    current_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2] + time_parts[3] / 100
-    percent = int((current_seconds / total_duration) * 100)
-    return percent
+async def get_video_dimensions(video_path):
+    result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=width,height',
+                             '-of', 'csv=p=0:s=x', video_path],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    width, height = map(int, result.stdout.decode('utf-8').strip().split('x'))
+    return width, height
 
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
-        status_message = await update.message.reply_text('Начинается расшифровка голосового сообщения...')
-
-        voice_file = update.message.voice.file_id
-        file = await context.bot.get_file(voice_file)
-
-        ogg_path = os.path.join('audio_storage', f"{voice_file}.ogg")
-        os.makedirs(os.path.dirname(ogg_path), exist_ok=True)
-
-        await file.download_to_drive(ogg_path)
-        logger.info(f'Голосовое сообщение загружено: {ogg_path}')
-
-        wav_path = tempfile.mktemp(suffix=".wav")
-        command = ['ffmpeg', '-i', ogg_path, wav_path]
-        total_duration = await get_video_duration(ogg_path)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Слушаю гс: {percent}%')
-
-        await status_message.edit_text('Конвертация завершена!')
-
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="ru-RU")
-        logger.debug(f'Распознанный текст: {text}')
-
-        # Добавление пунктуации
-        punctuated_text = add_punctuation(text)
-
-        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
-
-        os.remove(wav_path)
-        logger.debug(f'Временный WAV файл удалён: {wav_path}')
-
-    except Exception as e:
-        logger.error(f'Ошибка распознавания голоса: {e}', exc_info=True)
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-def main() -> None:
+def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(CallbackQueryHandler(button))
 
-    logger.info('Бот запущен')
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+    
