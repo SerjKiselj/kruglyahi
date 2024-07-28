@@ -7,6 +7,7 @@ import speech_recognition as sr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from pydub import AudioSegment
+from pydub.effects import normalize, strip_silence
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -191,12 +192,25 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         wav_path = tempfile.mktemp(suffix=".wav")
         audio = AudioSegment.from_ogg(audio_path)
+
+        # Применение нормализации и удаление тишины
+        audio = normalize(audio)
+        audio = strip_silence(audio, silence_len=1000, silence_thresh=-40)
+
         audio.export(wav_path, format="wav")
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="ru-RU")
+
+            # Использование нескольких API для распознавания
+            try:
+                text = recognizer.recognize_google(audio_data, language="ru-RU")
+            except sr.RequestError:
+                try:
+                    text = recognizer.recognize_ibm(audio_data, username='YOUR_IBM_USERNAME', password='YOUR_IBM_PASSWORD')
+                except sr.RequestError:
+                    text = "Ошибка распознавания речи всеми сервисами."
 
         punctuated_text = add_punctuation(text)
 
@@ -207,7 +221,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     except Exception as e:
         logger.error(f'Ошибка обработки голосового сообщения: {e}')
-        await update.message.reply_text(f'Произошла ошибка: {e}')
+        await update.message.reply_text(f'Произшла ошибка: {e}')
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
@@ -222,4 +236,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
