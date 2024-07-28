@@ -59,157 +59,20 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ])
     )
 
-async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        logger.debug(f'Получено видеосообщение от пользователя {update.message.from_user.id}')
-        video_file = update.message.video_note.file_id
-        file = await context.bot.get_file(video_file)
+    # Сохранение пути к видеофайлу в контексте пользователя
+    video_file = update.message.video.file_id
+    file = await context.bot.get_file(video_file)
+    video_path = os.path.join('video_storage', f"{video_file}.mp4")
+    os.makedirs(os.path.dirname(video_path), exist_ok=True)
+    await file.download_to_drive(video_path)
+    context.user_data['video_path'] = video_path
 
-        video_path = os.path.join('video_storage', f"{video_file}.mp4")
-        os.makedirs(os.path.dirname(video_path), exist_ok=True)
-        
-        await file.download_to_drive(video_path)
-        logger.info(f'Видео загружено: {video_path}')
+async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    video_path = context.user_data.get('video_path')
+    if not video_path:
+        await update.callback_query.message.reply_text('Ошибка: путь к видеофайлу не найден.')
+        return
 
-        await process_video_message(update, video_path)
-
-        os.remove(video_path)
-        logger.debug(f'Временный файл видео удалён: {video_path}')
-
-        # Обновление статистики
-        user_id = update.message.from_user.id
-        if user_id not in user_stats:
-            user_stats[user_id] = {
-                'video_to_note': 0,
-                'video_to_voice': 0,
-                'video_note_to_text': 0,
-                'voice_to_text': 0
-            }
-        user_stats[user_id]['video_note_to_text'] += 1
-
-    except Exception as e:
-        logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
-        voice_file = update.message.voice.file_id
-        file = await context.bot.get_file(voice_file)
-
-        ogg_path = os.path.join('voice_storage', f"{voice_file}.ogg")
-        os.makedirs(os.path.dirname(ogg_path), exist_ok=True)
-        
-        await file.download_to_drive(ogg_path)
-        logger.info(f'Голосовое сообщение загружено: {ogg_path}')
-
-        wav_path = tempfile.mktemp(suffix=".wav")
-        command = ['ffmpeg', '-i', ogg_path, wav_path]
-        total_duration = await get_video_duration(ogg_path)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-        status_message = await update.message.reply_text('Начинается процесс конвертации голосового сообщения в текст...')
-
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация голосового сообщения в текст: {percent}%')
-
-        await status_message.edit_text('Конвертация завершена!')
-
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="ru-RU")
-        logger.debug(f'Распознанный текст: {text}')
-
-        # Добавление пунктуации
-        punctuated_text = add_punctuation(text)
-
-        await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
-
-        os.remove(wav_path)
-        logger.debug(f'Временный WAV файл удалён: {wav_path}')
-        
-        # Обновление статистики
-        user_id = update.message.from_user.id
-        if user_id not in user_stats:
-            user_stats[user_id] = {
-                'video_to_note': 0,
-                'video_to_voice': 0,
-                'video_note_to_text': 0,
-                'voice_to_text': 0
-            }
-        user_stats[user_id]['voice_to_text'] += 1
-
-    except Exception as e:
-        logger.error(f'Ошибка обработки голосового сообщения: {e}', exc_info=True)
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        logger.debug(f'Получено аудиофайл от пользователя {update.message.from_user.id}')
-        audio_file = update.message.audio.file_id
-        file = await context.bot.get_file(audio_file)
-
-        mp3_path = os.path.join('audio_storage', f"{audio_file}.mp3")
-        os.makedirs(os.path.dirname(mp3_path), exist_ok=True)
-        
-        await file.download_to_drive(mp3_path)
-        logger.info(f'Аудиофайл загружен: {mp3_path}')
-
-        wav_path = tempfile.mktemp(suffix=".wav")
-        command = ['ffmpeg', '-i', mp3_path, wav_path]
-        total_duration = await get_video_duration(mp3_path)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-        status_message = await update.message.reply_text('Начинается процесс конвертации аудиосообщения в текст...')
-        
-        # Отображение прогресса
-        while process.poll() is None:
-            output = process.stderr.readline()
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
-            if match:
-                current_time = match.group(1)
-                percent = calculate_progress(current_time, total_duration)
-                await status_message.edit_text(f'Конвертация аудиосообщения в текст: {percent}%')
-
-        await status_message.edit_text('Конвертация завершена!')
-
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="ru-RU")
-        logger.debug(f'Распознанный текст: {text}')
-
-        # Добавление пунктуации
-        punctuated_text = add_punctuation(text)
-
-        await update.message.reply_text(f'*Расшифровка аудиосообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
-
-        os.remove(wav_path)
-        logger.debug(f'Временный WAV файл удалён: {wav_path}')
-        
-        # Обновление статистики
-        user_id = update.message.from_user.id
-        if user_id not in user_stats:
-            user_stats[user_id] = {
-                'video_to_note': 0,
-                'video_to_voice': 0,
-                'video_note_to_text': 0,
-                'voice_to_text': 0
-            }
-        user_stats[user_id]['voice_to_text'] += 1
-
-    except Exception as e:
-        logger.error(f'Ошибка обработки аудиосообщения: {e}', exc_info=True)
-        await update.message.reply_text(f'Произошла ошибка: {e}')
-
-async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
         user_id = update.callback_query.from_user.id
         logger.debug(f'Создание видеосообщения для пользователя {user_id} из видео {video_path}')
@@ -255,7 +118,12 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         logger.error(f'Ошибка создания видеосообщения: {e}', exc_info=True)
         await update.callback_query.message.reply_text(f'Произошла ошибка: {e}')
 
-async def create_voice_message_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
+async def create_voice_message_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    video_path = context.user_data.get('video_path')
+    if not video_path:
+        await update.callback_query.message.reply_text('Ошибка: путь к видеофайлу не найден.')
+        return
+
     try:
         user_id = update.callback_query.from_user.id
         logger.debug(f'Создание голосового сообщения для пользователя {user_id} из видео {video_path}')
@@ -299,6 +167,118 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
     except Exception as e:
         logger.error(f'Ошибка создания голосового сообщения: {e}', exc_info=True)
         await update.callback_query.message.reply_text(f'Произошла ошибка: {e}')
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
+        voice_file = update.message.voice.file_id
+        file = await context.bot.get_file(voice_file)
+
+        ogg_path = os.path.join('voice_storage', f"{voice_file}.ogg")
+        os.makedirs(os.path.dirname(ogg_path), exist_ok=True)
+        
+        await file.download_to_drive(ogg_path)
+        logger.info(f'Голосовое сообщение загружено: {ogg_path}')
+
+        wav_path = tempfile.mktemp(suffix=".wav")
+        command = ['ffmpeg', '-i', ogg_path, wav_path]
+        total_duration = await get_video_duration(ogg_path)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        status_message = await update.message.reply_text('Начинается процесс конвертации голосового сообщения в текст...')
+
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация голосового сообщения в текст: {percent}%')
+
+        await status_message.edit_text('Конвертация завершена!')
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio, language="ru-RU")
+        text = add_punctuation(text)
+        await update.message.reply_text(f'Расшифровка: {text}')
+
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['voice_to_text'] += 1
+
+        os.remove(ogg_path)
+        os.remove(wav_path)
+        logger.debug(f'Временные файлы удалены: {ogg_path}, {wav_path}')
+
+    except Exception as e:
+        logger.error(f'Ошибка расшифровки голосового сообщения: {e}', exc_info=True)
+        await update.message.reply_text(f'Произошла ошибка: {e}')
+
+async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        logger.debug(f'Получено видеосообщение от пользователя {update.message.from_user.id}')
+        video_note_file = update.message.video_note.file_id
+        file = await context.bot.get_file(video_note_file)
+
+        video_note_path = os.path.join('video_note_storage', f"{video_note_file}.mp4")
+        os.makedirs(os.path.dirname(video_note_path), exist_ok=True)
+        
+        await file.download_to_drive(video_note_path)
+        logger.info(f'Видеосообщение загружено: {video_note_path}')
+
+        wav_path = tempfile.mktemp(suffix=".wav")
+        command = ['ffmpeg', '-i', video_note_path, '-vn', wav_path]
+        total_duration = await get_video_duration(video_note_path)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+        status_message = await update.message.reply_text('Начинается процесс конвертации видеосообщения в текст...')
+
+        # Отображение прогресса
+        while process.poll() is None:
+            output = process.stderr.readline()
+            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            if match:
+                current_time = match.group(1)
+                percent = calculate_progress(current_time, total_duration)
+                await status_message.edit_text(f'Конвертация видеосообщения в текст: {percent}%')
+
+        await status_message.edit_text('Конвертация завершена!')
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio, language="ru-RU")
+        text = add_punctuation(text)
+        await update.message.reply_text(f'Расшифровка: {text}')
+
+        user_id = update.message.from_user.id
+        if user_id not in user_stats:
+            user_stats[user_id] = {
+                'video_to_note': 0,
+                'video_to_voice': 0,
+                'video_note_to_text': 0,
+                'voice_to_text': 0
+            }
+        user_stats[user_id]['video_note_to_text'] += 1
+
+        os.remove(video_note_path)
+        os.remove(wav_path)
+        logger.debug(f'Временные файлы удалены: {video_note_path}, {wav_path}')
+
+    except Exception as e:
+        logger.error(f'Ошибка расшифровки видеосообщения: {e}', exc_info=True)
+        await update.message.reply_text(f'Произошла ошибка: {e}')
 
 def add_punctuation(text: str) -> str:
     # Простая реализация добавления пунктуации
