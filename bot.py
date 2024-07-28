@@ -12,7 +12,7 @@ from pydub import AudioSegment
 import speech_recognition as sr
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Ваш токен, полученный от BotFather
@@ -27,12 +27,14 @@ def add_punctuation(text):
     return punctuated_text
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.debug(f'Команда /start от пользователя {update.message.from_user.id}')
     await update.message.reply_text(
         'Привет! Я бот, который поможет вам с видео и аудио файлами. Отправьте мне видео, видеосообщение или голосовое сообщение, и я предложу, что с ним можно сделать.'
     )
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        logger.debug(f'Получено видео от пользователя {update.message.from_user.id}')
         video_file = update.message.video.file_id
         file = await context.bot.get_file(video_file)
 
@@ -43,6 +45,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.info(f'Видео загружено: {video_path}')
 
         file_size = os.path.getsize(video_path)
+        logger.debug(f'Размер видео: {file_size} байт')
         if file_size > 2 * 1024 * 1024 * 1024:  # 2 ГБ
             await update.message.reply_text('Размер видео слишком большой. Пожалуйста, отправьте видео размером менее 2 ГБ.')
             os.remove(video_path)
@@ -65,6 +68,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        logger.debug(f'Получено видеосообщение от пользователя {update.message.from_user.id}')
         await update.message.reply_text("Начинается процесс конвертации видеосообщения в аудио...")
         video_note_file = update.message.video_note.file_id
         file = await context.bot.get_file(video_note_file)
@@ -78,11 +82,13 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         wav_path = tempfile.mktemp(suffix=".wav")
         command = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', wav_path]
         subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logger.debug(f'Видео конвертировано в WAV: {wav_path}')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
+        logger.debug(f'Распознанный текст: {text}')
 
         # Добавление пунктуации
         punctuated_text = add_punctuation(text)
@@ -90,6 +96,7 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f'*Расшифровка видеосообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
         os.remove(wav_path)
+        logger.debug(f'Временный WAV файл удалён: {wav_path}')
 
     except Exception as e:
         logger.error(f'Ошибка обработки видеосообщения: {e}', exc_info=True)
@@ -100,6 +107,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = query.from_user.id
 
     await query.answer()
+
+    logger.debug(f'Получен запрос кнопки от пользователя {user_id}: {query.data}')
 
     if user_id not in user_state:
         await query.edit_message_text(text="Видео не найдено, пожалуйста, отправьте видео ещё раз.")
@@ -114,10 +123,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
+        logger.debug(f'Начинается процесс конвертации видео в видеосообщение: {video_path}')
         await query.message.reply_text('Начинается процесс конвертации видео в видеосообщение...')
         
         width, height = await get_video_dimensions(video_path)
-        logger.info(f'Размеры исходного видео: {width}x{height}')
+        logger.debug(f'Размеры исходного видео: {width}x{height}')
 
         crop_size = min(width, height)
         x_offset = (width - crop_size) // 2
@@ -140,6 +150,7 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
             await query.message.reply_video_note(video)
 
         os.remove(output_path)
+        logger.debug(f'Временный MP4 файл удалён: {output_path}')
 
         await query.message.reply_text('Конвертация завершена!')
     
@@ -149,6 +160,7 @@ async def create_video_note_and_send(query: Update, context: ContextTypes.DEFAUL
 
 async def create_voice_message_and_send(query: Update, context: ContextTypes.DEFAULT_TYPE, video_path: str) -> None:
     try:
+        logger.debug(f'Начинается процесс конвертации видео в голосовое сообщение: {video_path}')
         await query.message.reply_text('Начинается процесс конвертации видео в голосовое сообщение...')
         
         output_path = tempfile.mktemp(suffix=".ogg")
@@ -161,6 +173,7 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
             await query.message.reply_voice(audio)
 
         os.remove(output_path)
+        logger.debug(f'Временный OGG файл удалён: {output_path}')
 
         await query.message.reply_text('Создание голосового сообщения завершено!')
     
@@ -169,40 +182,46 @@ async def create_voice_message_and_send(query: Update, context: ContextTypes.DEF
         await query.message.reply_text(f'Произошла ошибка: {e}')
 
 async def get_video_dimensions(video_path: str) -> tuple:
+    logger.debug(f'Получение размеров видео: {video_path}')
     command = [
         'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
         'stream=width,height', '-of', 'default=noprint_wrappers=1:nokey=1', video_path
     ]
     output = subprocess.check_output(command).decode().strip().split('\n')
     width, height = int(output[0]), int(output[1])
+    logger.debug(f'Размеры видео: {width}x{height}')
     return width, height
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        await update.message.reply_text("Начинается процесс распознавания речи...")
+        logger.debug(f'Получено голосовое сообщение от пользователя {update.message.from_user.id}')
         voice_file = update.message.voice.file_id
         file = await context.bot.get_file(voice_file)
 
-        audio_path = os.path.join('audio_storage', f"{voice_file}.ogg")
-        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+        ogg_path = os.path.join('audio_storage', f"{voice_file}.ogg")
+        os.makedirs(os.path.dirname(ogg_path), exist_ok=True)
 
-        await file.download_to_drive(audio_path)
-        logger.info(f'Голосовое сообщение загружено: {audio_path}')
+        await file.download_to_drive(ogg_path)
+        logger.info(f'Голосовое сообщение загружено: {ogg_path}')
 
         wav_path = tempfile.mktemp(suffix=".wav")
-        audio = AudioSegment.from_ogg(audio_path)
-        audio.export(wav_path, format="wav")
+        command = ['ffmpeg', '-i', ogg_path, wav_path]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        logger.debug(f'Голосовое сообщение конвертировано в WAV: {wav_path}')
 
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data, language="ru-RU")
+        logger.debug(f'Распознанный текст: {text}')
 
+        # Добавление пунктуации
         punctuated_text = add_punctuation(text)
 
         await update.message.reply_text(f'*Расшифровка голосового сообщения:*\n\n_{punctuated_text}_', parse_mode='Markdown')
 
         os.remove(wav_path)
+        logger.debug(f'Временный WAV файл удалён: {wav_path}')
 
     except Exception as e:
         logger.error(f'Ошибка распознавания голоса: {e}', exc_info=True)
@@ -217,8 +236,9 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_message))
     application.add_handler(CallbackQueryHandler(button))
 
+    logger.info('Бот запущен')
     application.run_polling()
 
 if __name__ == '__main__':
     main()
-    
+        
