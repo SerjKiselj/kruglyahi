@@ -54,12 +54,13 @@ async def create_video_note_and_send(update: Update, context: ContextTypes.DEFAU
         
         while process.poll() is None:
             try:
-                output = process.stderr.readline(timeout=120)  # Увеличиваем тайм-аут до 120 секунд
+                stdout, stderr = process.communicate(timeout=120)
             except subprocess.TimeoutExpired:
                 process.kill()
                 await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
                 return
             
+            output = stderr
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -90,12 +91,13 @@ async def create_voice_message_and_send(update: Update, context: ContextTypes.DE
         
         while process.poll() is None:
             try:
-                output = process.stderr.readline(timeout=120)  # Увеличиваем тайм-аут до 120 секунд
+                stdout, stderr = process.communicate(timeout=120)
             except subprocess.TimeoutExpired:
                 process.kill()
                 await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
                 return
             
+            output = stderr
             match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
             if match:
                 current_time = match.group(1)
@@ -160,13 +162,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Отображение прогресса
         while process.poll() is None:
             try:
-                output = process.stderr.readline(timeout=120)  # Увеличиваем тайм-аут до 120 секунд
+                stdout, stderr = process.communicate(timeout=120)
             except subprocess.TimeoutExpired:
                 process.kill()
                 await update.message.reply_text('Произошла ошибка: Превышено время ожидания.')
                 return
             
-            match = re.search(r'time=(\d+:\d+:\d+.\d+)', output)
+            output = stderr
+            match = re.search(r'time=(\d+:\d+:\д+.\д+)', output)
             if match:
                 current_time = match.group(1)
                 percent = calculate_progress(current_time, total_duration)
