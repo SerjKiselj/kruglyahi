@@ -1,12 +1,12 @@
 import asyncio
-import ffmpeg
 import os
 import tempfile
 import logging
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import speech_recognition as sr
 import re
+import ffmpeg
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -19,35 +19,28 @@ async def start(update: Update, context: CallbackContext):
         "Привет! Отправь мне видео или голосовое сообщение, и я обработаю его для тебя."
     )
 
-def run_ffmpeg_command(cmd, update_progress, timeout=60):
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    try:
-        _, stderr = process.communicate(timeout=timeout)
-        if process.returncode != 0:
-            raise Exception(f"FFmpeg error: {stderr}")
-    except subprocess.TimeoutExpired:
-        process.kill()
-        raise Exception("FFmpeg process timed out")
-    return process.returncode
-
 async def convert_video_to_video_message(video_path, output_path, update_progress):
     try:
-        duration_cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of',
-            'default=noprint_wrappers=1:nokey=1', video_path
-        ]
-        duration = float(subprocess.check_output(duration_cmd).strip())
-        
-        ffmpeg_cmd = [
-            'ffmpeg', '-i', video_path, '-vf', 'scale=640:640:force_original_aspect_ratio=increase,crop=640:640',
-            '-c:v', 'libx264', '-preset', 'fast', '-y', output_path
-        ]
-        
-        run_ffmpeg_command(ffmpeg_cmd, update_progress, timeout=120)
+        # Получаем продолжительность видео
+        probe = ffmpeg.probe(video_path)
+        duration = float(probe['format']['duration'])
+
+        # Начинаем процесс конвертации
+        process = (
+            ffmpeg
+            .input(video_path)
+            .filter('scale', 640, 640, force_original_aspect_ratio='increase')
+            .filter('crop', 640, 640)
+            .output(output_path, vcodec='libx264', preset='fast')
+            .global_args('-y')
+            .run_async(pipe_stdout=True, pipe_stderr=True)
+        )
 
         for percentage in range(0, 101, 10):
             await update_progress(percentage)
             await asyncio.sleep(duration / 10)
+
+        process.wait()
 
     except Exception as e:
         logger.error(f'Ошибка конвертации видео: {e}', exc_info=True)
@@ -55,21 +48,24 @@ async def convert_video_to_video_message(video_path, output_path, update_progres
 
 async def convert_video_to_voice(video_path, output_path, update_progress):
     try:
-        duration_cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of',
-            'default=noprint_wrappers=1:nokey=1', video_path
-        ]
-        duration = float(subprocess.check_output(duration_cmd).strip())
-        
-        ffmpeg_cmd = [
-            'ffmpeg', '-i', video_path, '-vn', '-acodec', 'libopus', '-b:a', '64k', '-y', output_path
-        ]
-        
-        run_ffmpeg_command(ffmpeg_cmd, update_progress, timeout=120)
-        
+        # Получаем продолжительность видео
+        probe = ffmpeg.probe(video_path)
+        duration = float(probe['format']['duration'])
+
+        # Начинаем процесс конвертации
+        process = (
+            ffmpeg
+            .input(video_path)
+            .output(output_path, acodec='libopus', audio_bitrate='64k', vn=None)
+            .global_args('-y')
+            .run_async(pipe_stdout=True, pipe_stderr=True)
+        )
+
         for percentage in range(0, 101, 10):
             await update_progress(percentage)
             await asyncio.sleep(duration / 10)
+
+        process.wait()
 
     except Exception as e:
         logger.error(f'Ошибка конвертации видео в голос: {e}', exc_info=True)
@@ -146,10 +142,7 @@ async def handle_voice(update: Update, context: CallbackContext):
         await update.message.reply_text("Начинается процесс конвертации голосового сообщения...")
         
         # Конвертация OGG в WAV
-        ffmpeg_cmd = [
-            'ffmpeg', '-i', voice_path, '-ar', '16000', '-ac', '1', '-y', wav_path
-        ]
-        run_ffmpeg_command(ffmpeg_cmd, update_progress, timeout=120)
+        ffmpeg.input(voice_path).output(wav_path, ar=16000, ac=1).run()
         
         for percentage in range(0, 101, 10):
             await update_progress(percentage)
