@@ -14,9 +14,14 @@ logger = logging.getLogger(__name__)
 # Получаем данные с биржи Bybit
 def get_crypto_prices():
     url = 'https://api.bybit.com/v2/public/tickers'
-    response = requests.get(url)
-    data = response.json()
-    return data['result']
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Проверка на наличие ошибок
+        data = response.json()
+        return data['result']
+    except requests.RequestException as e:
+        logger.error(f"Ошибка при получении данных с Bybit: {e}")
+        return []
 
 # Команда /start
 def start(update: Update, context: CallbackContext) -> None:
@@ -33,18 +38,21 @@ def button(update: Update, context: CallbackContext) -> None:
     
     if query.data == 'price':
         prices = get_crypto_prices()
-        response = ""
-        for price in prices:
-            symbol = price['symbol']
-            last_price = price['last_price']
-            response += f'{symbol}: {last_price}\n'
-        query.edit_message_text(text=response)
+        if prices:
+            response = ""
+            for price in prices:
+                symbol = price['symbol']
+                last_price = price['last_price']
+                response += f'{symbol}: {last_price}\n'
+            query.edit_message_text(text=response)
+        else:
+            query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
 
 def main():
     # Вставьте сюда свой токен
     token = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-    updater = Updater(token)
+    updater = Updater(token=token)
 
     dispatcher = updater.dispatcher
 
