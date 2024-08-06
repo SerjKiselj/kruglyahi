@@ -1,11 +1,11 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import requests
 
 # Включаем логирование
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelень)s - %(message)s',
     level=logging.INFO
 )
 
@@ -24,17 +24,17 @@ def get_crypto_prices():
         return []
 
 # Команда /start
-def start(update: Update, context: CallbackContext) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [InlineKeyboardButton("Узнать курсы криптовалют", callback_data='price')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Привет! Я бот, который показывает курсы криптовалют с биржи Bybit. Выберите команду:', reply_markup=reply_markup)
+    await update.message.reply_text('Привет! Я бот, который показывает курсы криптовалют с биржи Bybit. Выберите команду:', reply_markup=reply_markup)
 
 # Обработка нажатий на кнопки
-def button(update: Update, context: CallbackContext) -> None:
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    query.answer()
+    await query.answer()
     
     if query.data == 'price':
         prices = get_crypto_prices()
@@ -44,26 +44,22 @@ def button(update: Update, context: CallbackContext) -> None:
                 symbol = price['symbol']
                 last_price = price['last_price']
                 response += f'{symbol}: {last_price}\n'
-            query.edit_message_text(text=response)
+            await query.edit_message_text(text=response)
         else:
-            query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
+            await query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
 
 def main():
     # Вставьте сюда свой токен
     token = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-    updater = Updater(token=token)
-
-    dispatcher = updater.dispatcher
+    application = Application.builder().token(token).build()
 
     # Регистрируем обработчики команд и нажатий кнопок
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
 
     # Запускаем бота
-    updater.start_polling()
-
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
