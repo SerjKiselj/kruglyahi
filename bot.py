@@ -1,7 +1,9 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Defaults
 import requests
+import asyncio
 
 # Включаем логирование
 logging.basicConfig(
@@ -15,9 +17,10 @@ logger = logging.getLogger(__name__)
 def get_crypto_prices():
     url = 'https://api.bybit.com/v2/public/tickers'
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()  # Проверка на наличие ошибок
         data = response.json()
+        logger.info(data)  # Логируем полный ответ
         return data['result']
     except requests.RequestException as e:
         logger.error(f"Ошибка при получении данных с Bybit: {e}")
@@ -48,18 +51,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             await query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
 
-def main():
+async def run_bot():
     # Вставьте сюда свой токен
     token = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-    application = Application.builder().token(token).build()
+    defaults = Defaults(run_async=True)
+    application = Application.builder().token(token).defaults(defaults).build()
 
     # Регистрируем обработчики команд и нажатий кнопок
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
 
     # Запускаем бота
-    application.run_polling()
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    await application.updater.idle()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(run_bot())
