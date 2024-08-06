@@ -1,7 +1,6 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from telegram.ext import Defaults
 import requests
 import asyncio
 
@@ -51,22 +50,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             await query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
 
-async def run_bot():
+def main():
     # Вставьте сюда свой токен
     token = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-    defaults = Defaults(run_async=True)
-    application = Application.builder().token(token).defaults(defaults).build()
+    application = Application.builder().token(token).build()
 
     # Регистрируем обработчики команд и нажатий кнопок
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
 
     # Запускаем бота
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
-    asyncio.run(run_bot())
+    main()
