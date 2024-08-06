@@ -2,7 +2,6 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import requests
-import asyncio
 
 # Включаем логирование
 logging.basicConfig(
@@ -12,17 +11,17 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Получаем данные с биржи Bybit
+# Получаем данные с биржи Binance
 def get_crypto_prices():
-    url = 'https://api.bybit.com/v2/public/tickers'
+    url = 'https://api.binance.com/api/v3/ticker/price'
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()  # Проверка на наличие ошибок
         data = response.json()
         logger.info(data)  # Логируем полный ответ
-        return data['result']
+        return data
     except requests.RequestException as e:
-        logger.error(f"Ошибка при получении данных с Bybit: {e}")
+        logger.error(f"Ошибка при получении данных с Binance: {e}")
         return []
 
 # Команда /start
@@ -31,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Узнать курсы криптовалют", callback_data='price')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Привет! Я бот, который показывает курсы криптовалют с биржи Bybit. Выберите команду:', reply_markup=reply_markup)
+    await update.message.reply_text('Привет! Я бот, который показывает курсы криптовалют с биржи Binance. Выберите команду:', reply_markup=reply_markup)
 
 # Обработка нажатий на кнопки
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -42,13 +41,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         prices = get_crypto_prices()
         if prices:
             response = ""
-            for price in prices:
+            for price in prices[:10]:  # Ограничим вывод первыми 10 криптовалютами
                 symbol = price['symbol']
-                last_price = price['last_price']
+                last_price = price['price']
                 response += f'{symbol}: {last_price}\n'
             await query.edit_message_text(text=response)
         else:
-            await query.edit_message_text(text="Не удалось получить данные с Bybit. Попробуйте позже.")
+            await query.edit_message_text(text="Не удалось получить данные с Binance. Попробуйте позже.")
 
 def main():
     # Вставьте сюда свой токен
