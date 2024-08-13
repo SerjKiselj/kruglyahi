@@ -1,8 +1,12 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+import logging
 
 # Хранилище для всех текущих игр
 games = {}
+
+# Установите уровень логирования
+logging.basicConfig(level=logging.INFO)
 
 def create_board():
     return [[" " for _ in range(3)] for _ in range(3)]
@@ -73,47 +77,57 @@ async def button(update: Update, context):
     query = update.callback_query
     await query.answer()
 
-    game_id, row, col = query.data.split("_")
-    row, col = int(row), int(col)
+    try:
+        # Разбираем данные из callback_data
+        parts = query.data.split("_")
+        if len(parts) != 3:
+            raise ValueError("Некорректные данные в callback_data")
 
-    game = games[game_id]
-    board = game["board"]
-    current_player = game["current_player"]
+        game_id, row, col = parts
+        row, col = int(row), int(col)
 
-    if query.from_user.id != current_player or board[row][col] != " ":
-        return
+        game = games[game_id]
+        board = game["board"]
+        current_player = game["current_player"]
 
-    board[row][col] = game["players"][current_player]
+        if query.from_user.id != current_player or board[row][col] != " ":
+            return
 
-    if check_win(board, game["players"][current_player]):
-        await query.edit_message_text(text=f"Игрок {game['players'][current_player]} победил!\n\n{board_to_string(board)}")
-        await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Вы победили!")
-        await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Вы проиграли.")
-        del games[game_id]
-        return
+        board[row][col] = game["players"][current_player]
 
-    if all(all(cell != " " for cell in row) for row in board):
-        await query.edit_message_text(text=f"Ничья!\n\n{board_to_string(board)}")
-        await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Ничья.")
-        await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Ничья.")
-        del games[game_id]
-        return
+        if check_win(board, game["players"][current_player]):
+            await query.edit_message_text(text=f"Игрок {game['players'][current_player]} победил!\n\n{board_to_string(board)}")
+            await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Вы победили!")
+            await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Вы проиграли.")
+            del games[game_id]
+            return
 
-    game["current_player"] = game_id.split("_")[1] if current_player == int(game_id.split("_")[0]) else int(game_id.split("_")[0])
+        if all(all(cell != " " for cell in row) for row in board):
+            await query.edit_message_text(text=f"Ничья!\n\n{board_to_string(board)}")
+            await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Ничья.")
+            await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Ничья.")
+            del games[game_id]
+            return
 
-    buttons = [
-        [InlineKeyboardButton(board[0][0], callback_data=f"{game_id}_0_0"),
-         InlineKeyboardButton(board[0][1], callback_data=f"{game_id}_0_1"),
-         InlineKeyboardButton(board[0][2], callback_data=f"{game_id}_0_2")],
-        [InlineKeyboardButton(board[1][0], callback_data=f"{game_id}_1_0"),
-         InlineKeyboardButton(board[1][1], callback_data=f"{game_id}_1_1"),
-         InlineKeyboardButton(board[1][2], callback_data=f"{game_id}_1_2")],
-        [InlineKeyboardButton(board[2][0], callback_data=f"{game_id}_2_0"),
-         InlineKeyboardButton(board[2][1], callback_data=f"{game_id}_2_1"),
-         InlineKeyboardButton(board[2][2], callback_data=f"{game_id}_2_2")],
-    ]
+        game["current_player"] = game_id.split("_")[1] if current_player == int(game_id.split("_")[0]) else int(game_id.split("_")[0])
 
-    await query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = [
+            [InlineKeyboardButton(board[0][0], callback_data=f"{game_id}_0_0"),
+             InlineKeyboardButton(board[0][1], callback_data=f"{game_id}_0_1"),
+             InlineKeyboardButton(board[0][2], callback_data=f"{game_id}_0_2")],
+            [InlineKeyboardButton(board[1][0], callback_data=f"{game_id}_1_0"),
+             InlineKeyboardButton(board[1][1], callback_data=f"{game_id}_1_1"),
+             InlineKeyboardButton(board[1][2], callback_data=f"{game_id}_1_2")],
+            [InlineKeyboardButton(board[2][0], callback_data=f"{game_id}_2_0"),
+             InlineKeyboardButton(board[2][1], callback_data=f"{game_id}_2_1"),
+             InlineKeyboardButton(board[2][2], callback_data=f"{game_id}_2_2")],
+        ]
+
+        await query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
+
+    except ValueError as e:
+        logging.error(f"Ошибка обработки нажатия кнопки: {e}")
+        await query.edit_message_text(text="Ошибка обработки нажатия кнопки.")
 
 def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
@@ -126,4 +140,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
