@@ -48,20 +48,20 @@ async def invite(update: Update, context: CallbackContext) -> None:
 
 async def handle_forwarded_message(update: Update, context: CallbackContext) -> None:
     message: Message = update.message
-    if message.forward_from_user:
+    if message.forward_from or message.forward_from_chat:
         chat_id = message.chat_id
-        forwarded_user_id = message.forward_from_user.id
+        forwarded_user_id = message.forward_from.id if message.forward_from else None
         if chat_id in games and games[chat_id]['player2'] is None:
-            if forwarded_user_id != games[chat_id]['player1']:
+            if forwarded_user_id and forwarded_user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = forwarded_user_id
                 await context.bot.send_message(
                     forwarded_user_id,
                     'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.'
                 )
-                await message.reply_text(f'Приглашение отправлено пользователю {message.forward_from_user.username}.')
+                await message.reply_text(f'Приглашение отправлено пользователю с ID {forwarded_user_id}.')
                 await determine_first_move(update, context)
             else:
-                await message.reply_text('Нельзя пригласить себя.')
+                await message.reply_text('Нельзя пригласить себя или не найдено игрока.')
         else:
             await message.reply_text('Игра не найдена или уже начата.')
     else:
@@ -259,7 +259,7 @@ def run_bot():
     application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
-    application.add_handler(MessageHandler(filters.ALL, handle_forwarded_message))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_forwarded_message))
     application.run_polling()
 
 if __name__ == '__main__':
