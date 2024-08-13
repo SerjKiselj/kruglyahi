@@ -73,9 +73,9 @@ async def join(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text('Вы не можете присоединиться к этой игре.')
 
 def create_board_keyboard(board):
-    keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(3)],
-                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(3, 6)],
-                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(6, 9)]]
+    keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3)],
+                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3, 6)],
+                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(6, 9)]]
     return InlineKeyboardMarkup(keyboard)
 
 async def show_board(update: Update, context: CallbackContext) -> None:
@@ -189,4 +189,3 @@ def run_bot():
 
 if __name__ == '__main__':
     run_bot()
-            
