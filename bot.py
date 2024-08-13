@@ -1,66 +1,130 @@
-import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import requests
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 
-# Включаем логирование
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelень)s - %(message)s',
-    level=logging.INFO
-)
+# Хранилище для всех текущих игр
+games = {}
 
-logger = logging.getLogger(__name__)
+def create_board():
+    return [[" " for _ in range(3)] for _ in range(3)]
 
-# Получаем данные с биржи Binance
-def get_crypto_prices():
-    url = 'https://api.binance.com/api/v3/ticker/price'
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Проверка на наличие ошибок
-        data = response.json()
-        logger.info(data)  # Логируем полный ответ
-        return data
-    except requests.RequestException as e:
-        logger.error(f"Ошибка при получении данных с Binance: {e}")
-        return []
+def board_to_string(board):
+    return "\n".join([" | ".join(row) for row in board])
 
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [InlineKeyboardButton("Узнать курсы криптовалют", callback_data='price')]
+def check_win(board, player):
+    win_conditions = [
+        [board[0][0], board[0][1], board[0][2]],
+        [board[1][0], board[1][1], board[1][2]],
+        [board[2][0], board[2][1], board[2][2]],
+        [board[0][0], board[1][0], board[2][0]],
+        [board[0][1], board[1][1], board[2][1]],
+        [board[0][2], board[1][2], board[2][2]],
+        [board[0][0], board[1][1], board[2][2]],
+        [board[0][2], board[1][1], board[2][0]],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Привет! Я бот, который показывает курсы криптовалют с биржи Binance. Выберите команду:', reply_markup=reply_markup)
+    return [player, player, player] in win_conditions
 
-# Обработка нажатий на кнопки
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def start_game(update: Update, context: CallbackContext, player1, player2):
+    game_id = f"{player1}_{player2}"
+    games[game_id] = {
+        "board": create_board(),
+        "turn": "X",
+        "players": {player1: "X", player2: "O"},
+        "current_player": player1,
+    }
+    board = games[game_id]["board"]
+
+    buttons = [
+        [InlineKeyboardButton(board[0][0], callback_data=f"{game_id}_0_0"),
+         InlineKeyboardButton(board[0][1], callback_data=f"{game_id}_0_1"),
+         InlineKeyboardButton(board[0][2], callback_data=f"{game_id}_0_2")],
+        [InlineKeyboardButton(board[1][0], callback_data=f"{game_id}_1_0"),
+         InlineKeyboardButton(board[1][1], callback_data=f"{game_id}_1_1"),
+         InlineKeyboardButton(board[1][2], callback_data=f"{game_id}_1_2")],
+        [InlineKeyboardButton(board[2][0], callback_data=f"{game_id}_2_0"),
+         InlineKeyboardButton(board[2][1], callback_data=f"{game_id}_2_1"),
+         InlineKeyboardButton(board[2][2], callback_data=f"{game_id}_2_2")],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(buttons)
+    context.bot.send_message(chat_id=player1, text="Игра началась! Вы играете за X. Ваш ход.", reply_markup=reply_markup)
+    context.bot.send_message(chat_id=player2, text="Игра началась! Вы играете за O. Ждите своего хода.")
+
+def lobby(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("Использование: /lobby <ID пользователя для приглашения>")
+        return
+
+    player1 = update.message.from_user.id
+    player2 = int(context.args[0])
+
+    context.bot.send_message(chat_id=player2, text=f"Вас пригласили в игру крестики-нолики. Нажмите /join {player1}, чтобы принять приглашение.")
+
+def join(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("Использование: /join <ID пользователя создавшего лобби>")
+        return
+
+    player1 = int(context.args[0])
+    player2 = update.message.from_user.id
+
+    start_game(update, context, player1, player2)
+
+def button(update: Update, context: CallbackContext):
     query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'price':
-        prices = get_crypto_prices()
-        if prices:
-            response = ""
-            for price in prices[:10]:  # Ограничим вывод первыми 10 криптовалютами
-                symbol = price['symbol']
-                last_price = price['price']
-                response += f'{symbol}: {last_price}\n'
-            await query.edit_message_text(text=response)
-        else:
-            await query.edit_message_text(text="Не удалось получить данные с Binance. Попробуйте позже.")
+    query.answer()
+
+    game_id, row, col = query.data.split("_")
+    row, col = int(row), int(col)
+
+    game = games[game_id]
+    board = game["board"]
+    current_player = game["current_player"]
+
+    if query.from_user.id != current_player or board[row][col] != " ":
+        return
+
+    board[row][col] = game["players"][current_player]
+
+    if check_win(board, game["players"][current_player]):
+        query.edit_message_text(text=f"Игрок {game['players'][current_player]} победил!\n\n{board_to_string(board)}")
+        context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Вы победили!")
+        context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Вы проиграли.")
+        del games[game_id]
+        return
+
+    if all(all(cell != " " for cell in row) for row in board):
+        query.edit_message_text(text=f"Ничья!\n\n{board_to_string(board)}")
+        context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Ничья.")
+        context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Ничья.")
+        del games[game_id]
+        return
+
+    game["current_player"] = game_id.split("_")[1] if current_player == int(game_id.split("_")[0]) else int(game_id.split("_")[0])
+
+    buttons = [
+        [InlineKeyboardButton(board[0][0], callback_data=f"{game_id}_0_0"),
+         InlineKeyboardButton(board[0][1], callback_data=f"{game_id}_0_1"),
+         InlineKeyboardButton(board[0][2], callback_data=f"{game_id}_0_2")],
+        [InlineKeyboardButton(board[1][0], callback_data=f"{game_id}_1_0"),
+         InlineKeyboardButton(board[1][1], callback_data=f"{game_id}_1_1"),
+         InlineKeyboardButton(board[1][2], callback_data=f"{game_id}_1_2")],
+        [InlineKeyboardButton(board[2][0], callback_data=f"{game_id}_2_0"),
+         InlineKeyboardButton(board[2][1], callback_data=f"{game_id}_2_1"),
+         InlineKeyboardButton(board[2][2], callback_data=f"{game_id}_2_2")],
+    ]
+
+    query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
 
 def main():
-    # Вставьте сюда свой токен
-    token = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
+    updater = Updater("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s", use_context=True)
 
-    application = Application.builder().token(token).build()
+    updater.dispatcher.add_handler(CommandHandler("lobby", lobby))
+    updater.dispatcher.add_handler(CommandHandler("join", join))
+    updater.dispatcher.add_handler(CallbackQueryHandler(button))
 
-    # Регистрируем обработчики команд и нажатий кнопок
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
+    updater.start_polling()
+    updater.idle()
 
-    # Запускаем бота
-    application.run_polling()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+    
