@@ -133,7 +133,18 @@ async def show_board(update: Update, context: CallbackContext) -> None:
 async def handle_button_click(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     chat_id = query.message.chat_id
-    move = int(query.data)
+    data = query.data
+    
+    if data.startswith('invite_'):
+        await handle_invite(update, context)
+        return
+    
+    try:
+        move = int(data)
+    except ValueError:
+        await query.answer('Некорректные данные для перемещения.')
+        return
+
     if chat_id in games:
         game = games[chat_id]
         if not game['game_active']:
@@ -227,13 +238,13 @@ def minimax(board, is_maximizing):
 
 def check_winner(board):
     winning_combinations = [
-        (0, 1, 2), (3, 4, 5), (6, 7, 8),
-        (0, 3, 6), (1, 4, 7), (2, 5, 8),
-        (0, 4, 8), (2, 4, 6)
+        (0, 1, 2), (3, 4, 5), (6, 7, 8),  # rows
+        (0, 3, 6), (1, 4, 7), (2, 5, 8),  # columns
+        (0, 4, 8), (2, 4, 6)  # diagonals
     ]
-    for combo in winning_combinations:
-        if board[combo[0]] == board[combo[1]] == board[combo[2]] != ' ':
-            return 'Player1' if board[combo[0]] == 'X' else 'AI'
+    for a, b, c in winning_combinations:
+        if board[a] == board[b] == board[c] and board[a] != ' ':
+            return 'Player1' if board[a] == 'X' else 'AI'
     return None
 
 async def determine_first_move(update: Update, context: CallbackContext) -> None:
@@ -241,14 +252,13 @@ async def determine_first_move(update: Update, context: CallbackContext) -> None
     if chat_id in games:
         game = games[chat_id]
         if game['mode'] == 'single':
-            if random.choice([True, False]):
-                game['turn'] = game['player1']
-                await show_board(update, context)
-                await ai_move(update, context)
-            else:
-                game['turn'] = 'AI'
-                await show_board(update, context)
-        else:
+            if game['turn'] is None:
+                game['turn'] = random.choice([game['player1'], 'AI'])
+                if game['turn'] == 'AI':
+                    await ai_move(update, context)
+                else:
+                    await show_board(update, context)
+        elif game['turn'] is None:
             game['turn'] = game['player1']
             await show_board(update, context)
 
