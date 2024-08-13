@@ -51,7 +51,9 @@ async def handle_invite(update: Update, context: CallbackContext) -> None:
     if chat_id in games and games[chat_id]['player2'] is None:
         user = update.message.text.split('@')[1]
         try:
-            user_id = (await context.bot.get_chat(username=user)).id
+            user_chat = await context.bot.get_chat(user)
+            user_id = user_chat.id
+            
             if user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = user_id
                 await context.bot.send_message(user_id, 'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.')
