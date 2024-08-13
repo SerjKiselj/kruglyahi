@@ -1,6 +1,6 @@
+import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
-import random
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
@@ -15,7 +15,7 @@ async def new_game(update: Update, context: CallbackContext) -> None:
         'player1': update.message.from_user.id,
         'player2': None,
         'board': [' '] * 9,
-        'turn': update.message.from_user.id,
+        'turn': None,
         'game_active': True,
         'mode': 'multiplayer',
         'message_id': None
@@ -29,14 +29,14 @@ async def single_game(update: Update, context: CallbackContext) -> None:
         'player1': update.message.from_user.id,
         'player2': 'AI',
         'board': [' '] * 9,
-        'turn': update.message.from_user.id,
+        'turn': None,
         'game_active': True,
         'mode': 'single',
         'message_id': None
     }
-    msg = await update.message.reply_text('Вы начали игру против AI. Ваш ход!')
+    msg = await update.message.reply_text('Вы начали игру против AI. ИИ инициализирует игру.')
     games[chat_id]['message_id'] = msg.message_id
-    await show_board(update, context)
+    await determine_first_move(update, context)
 
 async def invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -67,8 +67,8 @@ async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] == update.message.from_user.id:
         games[chat_id]['game_active'] = True
-        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Ваш ход!')
-        await show_board(update, context)
+        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Инициализация...')
+        await determine_first_move(update, context)
     else:
         await update.message.reply_text('Вы не можете присоединиться к этой игре.')
 
@@ -95,7 +95,6 @@ async def show_board(update: Update, context: CallbackContext) -> None:
                     reply_markup=board_markup
                 )
             except Exception as e:
-                # If editing fails, send a new message
                 msg = await context.bot.send_message(
                     chat_id=chat_id,
                     text='Текущий статус игры:',
@@ -103,7 +102,6 @@ async def show_board(update: Update, context: CallbackContext) -> None:
                 )
                 game['message_id'] = msg.message_id
         else:
-            # If there's no message_id, send a new message
             msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text='Текущий статус игры:',
@@ -217,6 +215,21 @@ def check_winner(board):
             return 'Player1' if board[a] == 'X' else 'AI'
     return None
 
+async def determine_first_move(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    if chat_id in games:
+        game = games[chat_id]
+        if game['mode'] == 'single' and game['turn'] is None:
+            # Randomly decide who goes first
+            game['turn'] = random.choice([game['player1'], 'AI'])
+            if game['turn'] == 'AI':
+                await ai_move(update, context)
+            else:
+                await show_board(update, context)
+        elif game['turn'] is None:
+            game['turn'] = game['player1']
+            await show_board(update, context)
+
 def run_bot():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
@@ -225,8 +238,8 @@ def run_bot():
     application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_invite))
     application.run_polling()
 
 if __name__ == '__main__':
     run_bot()
-    
