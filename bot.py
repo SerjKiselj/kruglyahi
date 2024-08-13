@@ -1,9 +1,8 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import logging
-import asyncio
 
-# Включение логирования
+# Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 # Глобальные переменные для хранения состояния игры
 games = {}
 
-# Команды и функции бота
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Привет! Используйте /play, чтобы начать игру.')
 
@@ -37,8 +35,8 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         invitee_username = context.args[0]
         bot = context.bot
         try:
-            invitee = await bot.get_chat_member(update.message.chat_id, invitee_username)
-            invitee_id = invitee.user.id
+            invitee = await bot.get_chat(invitee_username)
+            invitee_id = invitee.id
         except:
             await update.message.reply_text('Не удалось найти пользователя.')
             return
@@ -63,7 +61,7 @@ async def accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             game['player2'] = user.id
             await context.bot.send_message(game['player1'], 'Ваш друг принял приглашение. Игра началась!')
             await context.bot.send_message(user.id, 'Вы присоединились к игре.')
-            await show_board(update.message.chat_id, game_id)
+            await show_board(update.effective_chat.id, game_id)
             return
     await update.message.reply_text('Вы не получили приглашение в игру.')
 
@@ -140,12 +138,5 @@ async def main() -> None:
 
 # Запуск приложения
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    except RuntimeError as e:
-        # Обработка исключения, если цикл событий уже запущен
-        if str(e) == 'This event loop is already running':
-            print("Цикл событий уже запущен. Убедитесь, что в среде не запущен другой цикл событий.")
-        else:
-            raise
+    import asyncio
+    asyncio.run(main())
