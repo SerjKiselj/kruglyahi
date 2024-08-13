@@ -1,13 +1,14 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import asyncio
+import random
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 games = {}
 
 async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру.')
+    await update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -16,9 +17,23 @@ async def new_game(update: Update, context: CallbackContext) -> None:
         'player2': None,
         'board': [' '] * 9,
         'turn': update.message.from_user.id,
-        'game_active': True
+        'game_active': True,
+        'mode': 'multiplayer'
     }
     await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
+
+async def single_game(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    games[chat_id] = {
+        'player1': update.message.from_user.id,
+        'player2': 'AI',
+        'board': [' '] * 9,
+        'turn': update.message.from_user.id,
+        'game_active': True,
+        'mode': 'single'
+    }
+    await update.message.reply_text('Вы начали игру против AI. Ваш ход!')
+    await show_board(update, context)
 
 async def invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -95,13 +110,35 @@ async def make_move(update: Update, context: CallbackContext) -> None:
                     game['game_active'] = False
                 else:
                     game['turn'] = game['player2'] if current_player == game['player1'] else game['player1']
-                    await show_board(update, context)
+                    if game['mode'] == 'single' and game['turn'] == 'AI':
+                        await ai_move(update, context)
+                    else:
+                        await show_board(update, context)
             else:
                 await update.message.reply_text('Эта клетка уже занята.')
         else:
             await update.message.reply_text('Неверный ввод. Введите номер клетки от 1 до 9.')
     else:
         await update.message.reply_text('Игра не найдена.')
+
+async def ai_move(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    if chat_id in games and games[chat_id]['mode'] == 'single':
+        game = games[chat_id]
+        available_moves = [i for i, spot in enumerate(game['board']) if spot == ' ']
+        move = random.choice(available_moves)
+        game['board'][move] = 'O'
+        winner = check_winner(game['board'])
+        
+        if winner:
+            await context.bot.send_message(chat_id, f"AI победил! Поздравляю AI!")
+            game['game_active'] = False
+        elif ' ' not in game['board']:
+            await context.bot.send_message(chat_id, "Ничья!")
+            game['game_active'] = False
+        else:
+            game['turn'] = game['player1']
+            await show_board(update, context)
 
 def check_winner(board):
     winning_combinations = [
@@ -111,13 +148,14 @@ def check_winner(board):
     ]
     for a, b, c in winning_combinations:
         if board[a] == board[b] == board[c] and board[a] != ' ':
-            return 'Player1' if board[a] == 'X' else 'Player2'
+            return 'Player1' if board[a] == 'X' else 'AI'
     return None
 
 def run_bot():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('newgame', new_game))
+    application.add_handler(CommandHandler('singlegame', single_game))
     application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, make_move))
