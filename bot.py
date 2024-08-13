@@ -4,10 +4,10 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Call
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
-games = {}
+games = {}  # Словарь для хранения данных о текущих играх
 
 async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Привет! Используйте /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
+    await update.message.reply_text('Привет! Используйте /newgame для начала новой игры или /singlegame для игры с AI.')
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -20,7 +20,7 @@ async def new_game(update: Update, context: CallbackContext) -> None:
         'mode': 'multiplayer',
         'message_id': None
     }
-    msg = await update.message.reply_text('Новая игра начата! Пригласите друга, используя команду /invite <user_id>.')
+    await update.message.reply_text('Новая игра начата! Пригласите друга, используя команду /invite <user_id>.')
 
 async def single_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -28,7 +28,7 @@ async def single_game(update: Update, context: CallbackContext) -> None:
         'player1': update.message.from_user.id,
         'player2': 'AI',
         'board': [' '] * 9,
-        'turn': None,
+        'turn': update.message.from_user.id,
         'game_active': True,
         'mode': 'single',
         'message_id': None
@@ -60,12 +60,16 @@ async def invite(update: Update, context: CallbackContext) -> None:
 
 async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    if chat_id in games and games[chat_id]['player2'] == update.message.from_user.id:
-        games[chat_id]['game_active'] = True
-        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Инициализация...')
-        await determine_first_move(update, context)
+    if chat_id in games:
+        game = games[chat_id]
+        if game['player2'] == update.message.from_user.id and game['game_active']:
+            game['turn'] = game['player1']  # Игрок, присоединившийся, должен сделать первый ход
+            await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Игра начнется сейчас!')
+            await show_board(update, context)
+        else:
+            await update.message.reply_text('Вы не можете присоединиться к этой игре или игра уже началась.')
     else:
-        await update.message.reply_text('Вы не можете присоединиться к этой игре.')
+        await update.message.reply_text('Игра не найдена.')
 
 def create_board_keyboard(board):
     keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3)],
