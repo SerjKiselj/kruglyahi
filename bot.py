@@ -1,15 +1,14 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 games = {}
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру.')
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру.')
 
-def new_game(update: Update, context: CallbackContext):
+async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     games[chat_id] = {
         'player1': update.message.from_user.id,
@@ -18,43 +17,43 @@ def new_game(update: Update, context: CallbackContext):
         'turn': update.message.from_user.id,
         'game_active': True
     }
-    update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
+    await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
 
-def invite(update: Update, context: CallbackContext):
+async def invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] is None:
-        context.bot.send_message(chat_id, 'Введите @username вашего друга для приглашения:')
+        await context.bot.send_message(chat_id, 'Введите @username вашего друга для приглашения:')
         return
     else:
-        update.message.reply_text('Игра уже начата или уже есть два игрока.')
+        await update.message.reply_text('Игра уже начата или уже есть два игрока.')
 
-def handle_invite(update: Update, context: CallbackContext):
+async def handle_invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] is None:
         user = update.message.text.split('@')[1]
         try:
-            user_id = context.bot.get_chat(username=user).id
+            user_id = (await context.bot.get_chat(username=user)).id
             if user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = user_id
-                context.bot.send_message(user_id, 'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.')
-                update.message.reply_text(f'Приглашение отправлено игроку @{user}.')
+                await context.bot.send_message(user_id, 'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.')
+                await update.message.reply_text(f'Приглашение отправлено игроку @{user}.')
             else:
-                update.message.reply_text('Нельзя пригласить себя.')
+                await update.message.reply_text('Нельзя пригласить себя.')
         except:
-            update.message.reply_text('Не удалось найти пользователя с этим username.')
+            await update.message.reply_text('Не удалось найти пользователя с этим username.')
     else:
-        update.message.reply_text('Игра не найдена или уже начата.')
+        await update.message.reply_text('Игра не найдена или уже начата.')
 
-def join(update: Update, context: CallbackContext):
+async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] == update.message.from_user.id:
         games[chat_id]['game_active'] = True
-        context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Ваш ход!')
-        show_board(update, context)
+        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Ваш ход!')
+        await show_board(update, context)
     else:
-        update.message.reply_text('Вы не можете присоединиться к этой игре.')
+        await update.message.reply_text('Вы не можете присоединиться к этой игре.')
 
-def show_board(update: Update, context: CallbackContext):
+async def show_board(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games:
         game = games[chat_id]
@@ -66,14 +65,14 @@ def show_board(update: Update, context: CallbackContext):
             "--+---+--",
             f"{board[6]} | {board[7]} | {board[8]}"
         ])
-        context.bot.send_message(chat_id, f"Текущий статус игры:\n{board_str}\n\nСделайте свой ход (введите номер клетки от 1 до 9):")
+        await context.bot.send_message(chat_id, f"Текущий статус игры:\n{board_str}\n\nСделайте свой ход (введите номер клетки от 1 до 9):")
 
-def make_move(update: Update, context: CallbackContext):
+async def make_move(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games:
         game = games[chat_id]
         if not game['game_active']:
-            update.message.reply_text('Игра завершена. Используйте /newgame для начала новой.')
+            await update.message.reply_text('Игра завершена. Используйте /newgame для начала новой.')
             return
         
         move = int(update.message.text) - 1
@@ -81,27 +80,27 @@ def make_move(update: Update, context: CallbackContext):
             if game['board'][move] == ' ':
                 current_player = game['turn']
                 if current_player != update.message.from_user.id:
-                    update.message.reply_text('Не ваш ход.')
+                    await update.message.reply_text('Не ваш ход.')
                     return
                 
                 game['board'][move] = 'X' if current_player == game['player1'] else 'O'
                 winner = check_winner(game['board'])
                 
                 if winner:
-                    context.bot.send_message(chat_id, f"Игрок {winner} победил! Поздравляю!")
+                    await context.bot.send_message(chat_id, f"Игрок {winner} победил! Поздравляю!")
                     game['game_active'] = False
                 elif ' ' not in game['board']:
-                    context.bot.send_message(chat_id, "Ничья!")
+                    await context.bot.send_message(chat_id, "Ничья!")
                     game['game_active'] = False
                 else:
                     game['turn'] = game['player2'] if current_player == game['player1'] else game['player1']
-                    show_board(update, context)
+                    await show_board(update, context)
             else:
-                update.message.reply_text('Эта клетка уже занята.')
+                await update.message.reply_text('Эта клетка уже занята.')
         else:
-            update.message.reply_text('Неверный ввод. Введите номер клетки от 1 до 9.')
+            await update.message.reply_text('Неверный ввод. Введите номер клетки от 1 до 9.')
     else:
-        update.message.reply_text('Игра не найдена.')
+        await update.message.reply_text('Игра не найдена.')
 
 def check_winner(board):
     winning_combinations = [
@@ -114,16 +113,15 @@ def check_winner(board):
             return 'Player1' if board[a] == 'X' else 'Player2'
     return None
 
-def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CommandHandler('newgame', new_game))
-    dp.add_handler(CommandHandler('invite', invite))
-    dp.add_handler(CommandHandler('join', join))
-    dp.add_handler(MessageHandler(None, make_move))
-    updater.start_polling()
-    updater.idle()
+async def main() -> None:
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('newgame', new_game))
+    application.add_handler(CommandHandler('invite', invite))
+    application.add_handler(CommandHandler('join', join))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, make_move))
+    await application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
