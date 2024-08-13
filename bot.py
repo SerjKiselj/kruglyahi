@@ -126,4 +126,10 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    # Если цикл событий уже запущен, используем run_polling() без asyncio.run()
+    try:
+        asyncio.run(main())
+    except RuntimeError:  # В случае ошибки запускаем run_polling() напрямую
+        application = Application.builder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
+        application.run_polling()
+        
