@@ -257,7 +257,7 @@ def main() -> None:
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('newgame', new_game))
     application.add_handler(CommandHandler('singlegame', single_game))
-    application.add_handler(MessageHandler(filters.forwarded & ~filters.command, handle_forwarded_message))
+    application.add_handler(MessageHandler(filters.FORWARDED, handle_forwarded_message))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
     application.run_polling()
