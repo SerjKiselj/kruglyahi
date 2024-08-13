@@ -136,10 +136,16 @@ async def main() -> None:
     application.add_handler(CommandHandler("accept", accept))
     application.add_handler(CallbackQueryHandler(handle_button))
 
-    # Вместо asyncio.run, используем run_polling()
     await application.run_polling()
 
+# Запуск приложения
 if __name__ == '__main__':
-    # Запуск приложения
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    try:
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        # Обработка исключения, если цикл событий уже запущен
+        if str(e) == 'This event loop is already running':
+            print("Цикл событий уже запущен. Убедитесь, что в среде не запущен другой цикл событий.")
+        else:
+            raise
