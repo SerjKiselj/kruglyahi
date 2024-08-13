@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 import logging
 
@@ -71,7 +71,7 @@ def show_board(chat_id: int, game_id: int) -> None:
     board = game['board']
     buttons = [[InlineKeyboardButton(board[i * 3 + j], callback_data=f'{game_id}-{i * 3 + j}') for j in range(3)] for i in range(3)]
     reply_markup = InlineKeyboardMarkup(buttons)
-    context.bot.send_message(chat_id, 'Ваш ход:\n\n' + format_board(board), reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+    context.bot.send_message(chat_id, 'Ваш ход:\n\n' + format_board(board), reply_markup=reply_markup)
 
 def format_board(board: list) -> str:
     return f"""
