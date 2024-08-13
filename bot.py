@@ -11,29 +11,25 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
     games[chat_id] = {
-        'player1': user_id,
+        'player1': update.message.from_user.id,
         'player2': None,
         'board': [' '] * 9,
-        'turn': user_id,
+        'turn': None,
         'game_active': True,
         'mode': 'multiplayer',
         'message_id': None
     }
-    invite_button = InlineKeyboardButton('Пригласить друга', callback_data=f'invite_{chat_id}')
-    keyboard = InlineKeyboardMarkup([[invite_button]])
-    msg = await update.message.reply_text('Новая игра начата! Пригласите друга для участия.', reply_markup=keyboard)
+    msg = await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
     games[chat_id]['message_id'] = msg.message_id
 
 async def single_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
     games[chat_id] = {
-        'player1': user_id,
+        'player1': update.message.from_user.id,
         'player2': 'AI',
         'board': [' '] * 9,
-        'turn': user_id,
+        'turn': None,
         'game_active': True,
         'mode': 'single',
         'message_id': None
@@ -42,29 +38,19 @@ async def single_game(update: Update, context: CallbackContext) -> None:
     games[chat_id]['message_id'] = msg.message_id
     await determine_first_move(update, context)
 
-async def handle_invite(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    chat_id = query.message.chat_id
-    if query.data.startswith('invite_'):
-        target_chat_id = int(query.data.split('_')[1])
-        if chat_id == target_chat_id:
-            await query.answer('Вы уже создали игру. Пригласите друга через команду /invite.')
-            return
-        
-        if chat_id in games and games[chat_id]['player2'] is None:
-            games[chat_id]['player2'] = query.from_user.id
-            await query.message.reply_text('Вы присоединились к игре! Инициализация...')
-            await determine_first_move(update, context)
-        else:
-            await query.answer('Не удалось присоединиться к игре. Попробуйте снова.')
+async def invite(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    if chat_id in games and games[chat_id]['player2'] is None:
+        await context.bot.send_message(chat_id, 'Пересылайте сообщение вашего друга для приглашения.')
+        return
     else:
-        await query.answer('Неизвестная команда.')
+        await update.message.reply_text('Игра уже начата или уже есть два игрока.')
 
 async def handle_forwarded_message(update: Update, context: CallbackContext) -> None:
     message: Message = update.message
-    if message.forward_from:
+    if message.forward_from_user:
         chat_id = message.chat_id
-        forwarded_user_id = message.forward_from.id
+        forwarded_user_id = message.forward_from_user.id
         if chat_id in games and games[chat_id]['player2'] is None:
             if forwarded_user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = forwarded_user_id
@@ -72,26 +58,23 @@ async def handle_forwarded_message(update: Update, context: CallbackContext) -> 
                     forwarded_user_id,
                     'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.'
                 )
-                await message.reply_text(f'Приглашение отправлено пользователю {message.forward_from.username}.')
+                await message.reply_text(f'Приглашение отправлено пользователю {message.forward_from_user.username}.')
                 await determine_first_move(update, context)
             else:
                 await message.reply_text('Нельзя пригласить себя.')
         else:
             await message.reply_text('Игра не найдена или уже начата.')
+    else:
+        await message.reply_text('Сообщение не является пересланным.')
 
 async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
-    if chat_id in games:
-        game = games[chat_id]
-        if game['player2'] == user_id:
-            game['game_active'] = True
-            await context.bot.send_message(user_id, 'Вы присоединились к игре. Инициализация...')
-            await determine_first_move(update, context)
-        else:
-            await update.message.reply_text('Вы не можете присоединиться к этой игре или не были приглашены.')
+    if chat_id in games and games[chat_id]['player2'] == update.message.from_user.id:
+        games[chat_id]['game_active'] = True
+        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Инициализация...')
+        await determine_first_move(update, context)
     else:
-        await update.message.reply_text('Игра не найдена.')
+        await update.message.reply_text('Вы не можете присоединиться к этой игре.')
 
 def create_board_keyboard(board):
     keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3)],
@@ -134,17 +117,24 @@ async def handle_button_click(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     chat_id = query.message.chat_id
     data = query.data
-    
+
     if data.startswith('invite_'):
-        await handle_invite(update, context)
-        return
-    
-    try:
-        move = int(data)
-    except ValueError:
-        await query.answer('Некорректные данные для перемещения.')
+        invited_user_id = int(data.split('_')[1])
+        if chat_id in games and games[chat_id]['player2'] is None:
+            if invited_user_id != games[chat_id]['player1']:
+                games[chat_id]['player2'] = invited_user_id
+                await context.bot.send_message(
+                    invited_user_id,
+                    'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.'
+                )
+                await query.message.reply_text(f'Приглашение отправлено пользователю с ID {invited_user_id}.')
+            else:
+                await query.message.reply_text('Нельзя пригласить себя.')
+        else:
+            await query.message.reply_text('Игра не найдена или уже начата.')
         return
 
+    move = int(data)
     if chat_id in games:
         game = games[chat_id]
         if not game['game_active']:
@@ -238,8 +228,8 @@ def minimax(board, is_maximizing):
 
 def check_winner(board):
     winning_combinations = [
-        (0, 1, 2), (3, 4, 5), (6, 7, 8),  # rows
-        (0, 3, 6), (1, 4, 7), (2, 5, 8),  # columns
+        (0, 1, 2), (3, 4, 5), (6, 7, 8), # rows
+        (0, 3, 6), (1, 4, 7), (2, 5, 8), # columns
         (0, 4, 8), (2, 4, 6)  # diagonals
     ]
     for a, b, c in winning_combinations:
@@ -251,26 +241,26 @@ async def determine_first_move(update: Update, context: CallbackContext) -> None
     chat_id = update.message.chat_id
     if chat_id in games:
         game = games[chat_id]
-        if game['mode'] == 'single':
-            if game['turn'] is None:
-                game['turn'] = random.choice([game['player1'], 'AI'])
-                if game['turn'] == 'AI':
-                    await ai_move(update, context)
-                else:
-                    await show_board(update, context)
+        if game['mode'] == 'single' and game['turn'] is None:
+            game['turn'] = random.choice([game['player1'], 'AI'])
+            if game['turn'] == 'AI':
+                await ai_move(update, context)
+            else:
+                await show_board(update, context)
         elif game['turn'] is None:
             game['turn'] = game['player1']
             await show_board(update, context)
 
-def main() -> None:
+def run_bot():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('newgame', new_game))
     application.add_handler(CommandHandler('singlegame', single_game))
-    application.add_handler(MessageHandler(filters.FORWARDED, handle_forwarded_message))
+    application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
+    application.add_handler(MessageHandler(filters.ALL, handle_forwarded_message))
     application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    run_bot()
