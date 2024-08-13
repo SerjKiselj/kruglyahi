@@ -1,14 +1,13 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-import asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext
 import random
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 games = {}
 
-async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -69,57 +68,55 @@ async def join(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text('Вы не можете присоединиться к этой игре.')
 
+def create_board_keyboard(board):
+    keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(3)],
+                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(3, 6)],
+                [InlineKeyboardButton(text=board[i] if board[i] != ' ' else f'{i+1}', callback_data=str(i)) for i in range(6, 9)]]
+    return InlineKeyboardMarkup(keyboard)
+
 async def show_board(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games:
         game = games[chat_id]
         board = game['board']
-        board_str = '\n'.join([
-            f"{board[0]} | {board[1]} | {board[2]}",
-            "--+---+--",
-            f"{board[3]} | {board[4]} | {board[5]}",
-            "--+---+--",
-            f"{board[6]} | {board[7]} | {board[8]}"
-        ])
-        await context.bot.send_message(chat_id, f"Текущий статус игры:\n{board_str}\n\nСделайте свой ход (введите номер клетки от 1 до 9):")
+        board_markup = create_board_keyboard(board)
+        await context.bot.send_message(chat_id, 'Текущий статус игры:', reply_markup=board_markup)
 
-async def make_move(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
+async def handle_button_click(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    chat_id = query.message.chat_id
+    move = int(query.data)
     if chat_id in games:
         game = games[chat_id]
         if not game['game_active']:
-            await update.message.reply_text('Игра завершена. Используйте /newgame для начала новой.')
+            await query.answer('Игра завершена. Используйте /newgame для начала новой.')
             return
         
-        move = int(update.message.text) - 1
-        if 0 <= move < 9:
-            if game['board'][move] == ' ':
-                current_player = game['turn']
-                if current_player != update.message.from_user.id:
-                    await update.message.reply_text('Не ваш ход.')
-                    return
-                
-                game['board'][move] = 'X' if current_player == game['player1'] else 'O'
-                winner = check_winner(game['board'])
-                
-                if winner:
-                    await context.bot.send_message(chat_id, f"Игрок {winner} победил! Поздравляю!")
-                    game['game_active'] = False
-                elif ' ' not in game['board']:
-                    await context.bot.send_message(chat_id, "Ничья!")
-                    game['game_active'] = False
-                else:
-                    game['turn'] = game['player2'] if current_player == game['player1'] else game['player1']
-                    if game['mode'] == 'single' and game['turn'] == 'AI':
-                        await ai_move(update, context)
-                    else:
-                        await show_board(update, context)
+        if game['board'][move] == ' ':
+            current_player = game['turn']
+            if current_player != query.from_user.id:
+                await query.answer('Не ваш ход.')
+                return
+
+            game['board'][move] = 'X' if current_player == game['player1'] else 'O'
+            winner = check_winner(game['board'])
+            
+            if winner:
+                await query.message.edit_text(f"Игрок {winner} победил! Поздравляю!")
+                game['game_active'] = False
+            elif ' ' not in game['board']:
+                await query.message.edit_text("Ничья!")
+                game['game_active'] = False
             else:
-                await update.message.reply_text('Эта клетка уже занята.')
+                game['turn'] = game['player2'] if current_player == game['player1'] else game['player1']
+                if game['mode'] == 'single' and game['turn'] == 'AI':
+                    await ai_move(update, context)
+                else:
+                    await show_board(update, context)
         else:
-            await update.message.reply_text('Неверный ввод. Введите номер клетки от 1 до 9.')
+            await query.answer('Эта клетка уже занята.')
     else:
-        await update.message.reply_text('Игра не найдена.')
+        await query.answer('Игра не найдена.')
 
 async def ai_move(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -158,7 +155,7 @@ def run_bot():
     application.add_handler(CommandHandler('singlegame', single_game))
     application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, make_move))
+    application.add_handler(CallbackQueryHandler(handle_button_click))
     application.run_polling()
 
 if __name__ == '__main__':
