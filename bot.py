@@ -1,6 +1,6 @@
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import logging
 import asyncio
 
 # Настройка логирования
@@ -81,62 +81,44 @@ def format_board(board: list) -> str:
     {board[6]}|{board[7]}|{board[8]}
     """
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    game_id, position = map(int, query.data.split('-'))
-    game = games.get(game_id)
-    
-    if not game:
-        await query.answer(text="Игра не найдена")
-        return
-
-    if query.from_user.id != game['turn']:
-        await query.answer(text="Не ваш ход")
-        return
-
-    if game['board'][position] != ' ':
-        await query.answer(text="Ячейка уже занята")
-        return
-
-    # Обновление игрового поля
-    game['board'][position] = 'X' if query.from_user.id == game['player1'] else 'O'
-    game['turn'] = game['player2'] if query.from_user.id == game['player1'] else game['player1']
-    
-    # Проверка на победу
-    winner = check_winner(game['board'])
-    if winner:
-        await context.bot.send_message(update.effective_chat.id, f'Игрок {winner} выиграл!')
-        del games[game_id]
-        return
-
-    # Проверка на ничью
-    if ' ' not in game['board']:
-        await context.bot.send_message(update.effective_chat.id, 'Ничья!')
-        del games[game_id]
-        return
-    
-    await show_board(update.effective_chat.id, game_id)
     await query.answer()
+    data = query.data.split('-')
+    game_id = int(data[0])
+    index = int(data[1])
 
-def check_winner(board: list) -> str:
-    winning_combinations = [(0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6), (1, 4, 7), (2, 5, 8), (0, 4, 8), (2, 4, 6)]
-    for (a, b, c) in winning_combinations:
-        if board[a] == board[b] == board[c] and board[a] != ' ':
-            return board[a]
-    return None
+    game = games.get(game_id)
+    if game and game['turn'] == query.from_user.id:
+        if game['board'][index] == ' ':
+            game['board'][index] = 'X' if query.from_user.id == game['player1'] else 'O'
+            game['turn'] = game['player2'] if query.from_user.id == game['player1'] else game['player1']
+            await show_board(update.effective_chat.id, game_id)
+        else:
+            await query.answer('Это поле уже занято.')
 
 async def main() -> None:
+    # Убедитесь, что используете правильный токен
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
+    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("play", play))
     application.add_handler(CommandHandler("invite", invite))
     application.add_handler(CommandHandler("accept", accept))
-    application.add_handler(CallbackQueryHandler(handle_button))
 
+    # Обработчик нажатий кнопок
+    application.add_handler(CallbackQueryHandler(handle_button_click))
+
+    # Запуск бота
     await application.run_polling()
 
-# Запуск приложения
 if __name__ == '__main__':
-    asyncio.run(main())
-  
+    # Запуск цикла событий
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
