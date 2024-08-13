@@ -17,9 +17,11 @@ async def new_game(update: Update, context: CallbackContext) -> None:
         'board': [' '] * 9,
         'turn': update.message.from_user.id,
         'game_active': True,
-        'mode': 'multiplayer'
+        'mode': 'multiplayer',
+        'message_id': None
     }
-    await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
+    msg = await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
+    games[chat_id]['message_id'] = msg.message_id
 
 async def single_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -29,9 +31,11 @@ async def single_game(update: Update, context: CallbackContext) -> None:
         'board': [' '] * 9,
         'turn': update.message.from_user.id,
         'game_active': True,
-        'mode': 'single'
+        'mode': 'single',
+        'message_id': None
     }
-    await update.message.reply_text('Вы начали игру против AI. Ваш ход!')
+    msg = await update.message.reply_text('Вы начали игру против AI. Ваш ход!')
+    games[chat_id]['message_id'] = msg.message_id
     await show_board(update, context)
 
 async def invite(update: Update, context: CallbackContext) -> None:
@@ -80,7 +84,32 @@ async def show_board(update: Update, context: CallbackContext) -> None:
         game = games[chat_id]
         board = game['board']
         board_markup = create_board_keyboard(board)
-        await context.bot.send_message(chat_id, 'Текущий статус игры:', reply_markup=board_markup)
+        message_id = game['message_id']
+        
+        if message_id:
+            try:
+                await context.bot.edit_message_text(
+                    text='Текущий статус игры:',
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=board_markup
+                )
+            except Exception as e:
+                # If editing fails, send a new message
+                msg = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text='Текущий статус игры:',
+                    reply_markup=board_markup
+                )
+                game['message_id'] = msg.message_id
+        else:
+            # If there's no message_id, send a new message
+            msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text='Текущий статус игры:',
+                reply_markup=board_markup
+            )
+            game['message_id'] = msg.message_id
 
 async def handle_button_click(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
@@ -160,4 +189,4 @@ def run_bot():
 
 if __name__ == '__main__':
     run_bot()
-    
+            
