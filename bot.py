@@ -41,7 +41,7 @@ async def single_game(update: Update, context: CallbackContext) -> None:
 async def invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] is None:
-        await context.bot.send_message(chat_id, 'Введите ID вашего друга для приглашения (или @username в случае приватного чата):')
+        await context.bot.send_message(chat_id, 'Введите @username вашего друга для приглашения:')
         return
     else:
         await update.message.reply_text('Игра уже начата или уже есть два игрока.')
@@ -49,34 +49,34 @@ async def invite(update: Update, context: CallbackContext) -> None:
 async def handle_invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games and games[chat_id]['player2'] is None:
-        text = update.message.text
+        user = update.message.text.split('@')[1]
         try:
-            if text.startswith('@'):
-                username = text[1:]
-                user = await context.bot.get_chat(username=username)
-                user_id = user.id
-            else:
-                user_id = int(text)
-            
+            user_info = await context.bot.get_chat(username=user)
+            user_id = user_info.id
             if user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = user_id
                 await context.bot.send_message(user_id, 'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.')
-                await update.message.reply_text(f'Приглашение отправлено игроку с ID {user_id}.')
+                await update.message.reply_text(f'Приглашение отправлено игроку @{user}.')
             else:
                 await update.message.reply_text('Нельзя пригласить себя.')
         except Exception as e:
-            await update.message.reply_text(f'Не удалось найти пользователя. Ошибка: {e}')
+            await update.message.reply_text(f'Не удалось найти пользователя с этим username. Ошибка: {e}')
     else:
         await update.message.reply_text('Игра не найдена или уже начата.')
 
 async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    if chat_id in games and games[chat_id]['player2'] == update.message.from_user.id:
-        games[chat_id]['game_active'] = True
-        await context.bot.send_message(update.message.from_user.id, 'Вы присоединились к игре. Инициализация...')
-        await determine_first_move(update, context)
+    user_id = update.message.from_user.id
+    if chat_id in games:
+        game = games[chat_id]
+        if game['player2'] == user_id:
+            game['game_active'] = True
+            await context.bot.send_message(user_id, 'Вы присоединились к игре. Инициализация...')
+            await determine_first_move(update, context)
+        else:
+            await update.message.reply_text('Вы не можете присоединиться к этой игре или не были приглашены.')
     else:
-        await update.message.reply_text('Вы не можете присоединиться к этой игре.')
+        await update.message.reply_text('Игра не найдена.')
 
 def create_board_keyboard(board):
     keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3)],
