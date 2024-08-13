@@ -137,7 +137,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del games[game_id]
             return
 
-        game["current_player"] = game_id.split("_")[1] if current_player == int(game_id.split("_")[0]) else int(game_id.split("_")[0])
+        # Переключаем текущего игрока
+        game["current_player"] = next(player for player in game["players"] if player != current_player)
 
         buttons = [
             [InlineKeyboardButton(board[0][0], callback_data=f"{game_id}_0_0"),
