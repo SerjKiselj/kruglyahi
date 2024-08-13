@@ -75,7 +75,7 @@ def create_board_keyboard(board):
     return InlineKeyboardMarkup(keyboard)
 
 async def show_board(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
+    chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     if chat_id in games:
         game = games[chat_id]
         board = game['board']
