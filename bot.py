@@ -140,10 +140,6 @@ async def main() -> None:
     await application.run_polling()
 
 if __name__ == '__main__':
-    # Проверяем, если цикл уже запущен, чтобы не конфликтовать
-    if not asyncio.get_event_loop().is_running():
-        asyncio.run(main())
-    else:
-        # Для среды, где цикл уже работает
-        loop = asyncio.get_event_loop()
-        loop.create_task(main())
+    # Запуск приложения
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
