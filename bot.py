@@ -1,5 +1,6 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+import asyncio
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
@@ -113,15 +114,14 @@ def check_winner(board):
             return 'Player1' if board[a] == 'X' else 'Player2'
     return None
 
-async def main() -> None:
+def run_bot():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('newgame', new_game))
     application.add_handler(CommandHandler('invite', invite))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, make_move))
-    await application.run_polling()
+    application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    run_bot()
