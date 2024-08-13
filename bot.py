@@ -159,7 +159,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text="Ошибка обработки нажатия кнопки.")
 
 # Основная функция для запуска бота
-async def main():
+def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
     application.add_handler(CommandHandler("start", start))
@@ -167,7 +167,9 @@ async def main():
     application.add_handler(CommandHandler("join", join))
     application.add_handler(CallbackQueryHandler(button))
 
-    await application.run_polling()
+    # Запускаем бот
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())  # Используйте asyncio.run() только для запуска основной функции
+    # Запускаем основную функцию
+    main()
