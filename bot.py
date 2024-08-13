@@ -77,7 +77,7 @@ async def join(update: Update, context: CallbackContext) -> None:
         if game['player2'] == chat_id:
             game['game_active'] = True
             await update.message.reply_text('Вы присоединились к игре! Инициализация...')
-            await determine_first_move(update, context)
+            await show_board(update, context)
         else:
             await update.message.reply_text('Вы не можете присоединиться к этой игре.')
     else:
@@ -85,17 +85,26 @@ async def join(update: Update, context: CallbackContext) -> None:
 
 async def determine_first_move(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    if chat_id in games:
-        game = games[chat_id]
-        if game['mode'] == 'single' and game['turn'] is None:
-            game['turn'] = random.choice([game['player1'], 'AI'])
+    game_id = None
+    for gid, game in games.items():
+        if game['player1'] == chat_id or game['player2'] == chat_id:
+            game_id = gid
+            break
+
+    if game_id:
+        game = games[game_id]
+        if game['mode'] == 'single':
+            # Если это игра с ИИ, сделаем первый ход ИИ
             if game['turn'] == 'AI':
                 await ai_move(update, context)
             else:
                 await show_board(update, context)
-        elif game['turn'] is None:
-            game['turn'] = game['player1']
-            await show_board(update, context)
+        elif game['mode'] == 'multiplayer':
+            # Если это многопользовательская игра, просто покажем доску
+            if game['turn'] == chat_id:
+                await show_board(update, context)
+            else:
+                await update.message.reply_text('Игра инициализирована. Ожидайте вашего хода.')
 
 def create_board_keyboard(board):
     keyboard = [[InlineKeyboardButton(text=board[i] if board[i] != ' ' else ' ', callback_data=str(i)) for i in range(3)],
@@ -191,11 +200,11 @@ async def ai_move(update: Update, context: CallbackContext) -> None:
 
 def run_bot():
     application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('newgame', new_game))
-    application.add_handler(CommandHandler('singlegame', single_game))
-    application.add_handler(CommandHandler('invite', invite))
-    application.add_handler(CommandHandler('join', join))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("newgame", new_game))
+    application.add_handler(CommandHandler("singlegame", single_game))
+    application.add_handler(CommandHandler("invite", invite))
+    application.add_handler(CommandHandler("join", join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
     application.run_polling()
 
