@@ -48,9 +48,10 @@ async def invite(update: Update, context: CallbackContext) -> None:
 
 async def handle_forwarded_message(update: Update, context: CallbackContext) -> None:
     message: Message = update.message
-    if message.forward_from_user or message.forward_from_chat:
+    # Проверяем, что сообщение переслано
+    if message.forward_from or message.forward_from_chat:
         chat_id = message.chat_id
-        forwarded_user_id = message.forward_from_user.id if message.forward_from_user else None
+        forwarded_user_id = message.forward_from.id if message.forward_from else None
         if chat_id in games and games[chat_id]['player2'] is None:
             if forwarded_user_id and forwarded_user_id != games[chat_id]['player1']:
                 games[chat_id]['player2'] = forwarded_user_id
