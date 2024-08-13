@@ -1,5 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # Хранилище для всех текущих игр
 games = {}
@@ -23,7 +23,7 @@ def check_win(board, player):
     ]
     return [player, player, player] in win_conditions
 
-def start_game(update: Update, context: CallbackContext, player1, player2):
+async def start_game(context: ContextTypes.DEFAULT_TYPE, player1, player2):
     game_id = f"{player1}_{player2}"
     games[game_id] = {
         "board": create_board(),
@@ -46,32 +46,32 @@ def start_game(update: Update, context: CallbackContext, player1, player2):
     ]
 
     reply_markup = InlineKeyboardMarkup(buttons)
-    context.bot.send_message(chat_id=player1, text="Игра началась! Вы играете за X. Ваш ход.", reply_markup=reply_markup)
-    context.bot.send_message(chat_id=player2, text="Игра началась! Вы играете за O. Ждите своего хода.")
+    await context.bot.send_message(chat_id=player1, text="Игра началась! Вы играете за X. Ваш ход.", reply_markup=reply_markup)
+    await context.bot.send_message(chat_id=player2, text="Игра началась! Вы играете за O. Ждите своего хода.")
 
-def lobby(update: Update, context: CallbackContext):
+async def lobby(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
-        update.message.reply_text("Использование: /lobby <ID пользователя для приглашения>")
+        await update.message.reply_text("Использование: /lobby <ID пользователя для приглашения>")
         return
 
     player1 = update.message.from_user.id
     player2 = int(context.args[0])
 
-    context.bot.send_message(chat_id=player2, text=f"Вас пригласили в игру крестики-нолики. Нажмите /join {player1}, чтобы принять приглашение.")
+    await context.bot.send_message(chat_id=player2, text=f"Вас пригласили в игру крестики-нолики. Нажмите /join {player1}, чтобы принять приглашение.")
 
-def join(update: Update, context: CallbackContext):
+async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
-        update.message.reply_text("Использование: /join <ID пользователя создавшего лобби>")
+        await update.message.reply_text("Использование: /join <ID пользователя создавшего лобби>")
         return
 
     player1 = int(context.args[0])
     player2 = update.message.from_user.id
 
-    start_game(update, context, player1, player2)
+    await start_game(context, player1, player2)
 
-def button(update: Update, context: CallbackContext):
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
 
     game_id, row, col = query.data.split("_")
     row, col = int(row), int(col)
@@ -86,16 +86,16 @@ def button(update: Update, context: CallbackContext):
     board[row][col] = game["players"][current_player]
 
     if check_win(board, game["players"][current_player]):
-        query.edit_message_text(text=f"Игрок {game['players'][current_player]} победил!\n\n{board_to_string(board)}")
-        context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Вы победили!")
-        context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Вы проиграли.")
+        await query.edit_message_text(text=f"Игрок {game['players'][current_player]} победил!\n\n{board_to_string(board)}")
+        await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Вы победили!")
+        await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Вы проиграли.")
         del games[game_id]
         return
 
     if all(all(cell != " " for cell in row) for row in board):
-        query.edit_message_text(text=f"Ничья!\n\n{board_to_string(board)}")
-        context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Ничья.")
-        context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Ничья.")
+        await query.edit_message_text(text=f"Ничья!\n\n{board_to_string(board)}")
+        await context.bot.send_message(chat_id=game_id.split("_")[0], text=f"Игра окончена. Ничья.")
+        await context.bot.send_message(chat_id=game_id.split("_")[1], text=f"Игра окончена. Ничья.")
         del games[game_id]
         return
 
@@ -113,18 +113,19 @@ def button(update: Update, context: CallbackContext):
          InlineKeyboardButton(board[2][2], callback_data=f"{game_id}_2_2")],
     ]
 
-    query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
+    await query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
 
-def main():
-    updater = Updater("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s", use_context=True)
+async def main():
+    application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
-    updater.dispatcher.add_handler(CommandHandler("lobby", lobby))
-    updater.dispatcher.add_handler(CommandHandler("join", join))
-    updater.dispatcher.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CommandHandler("lobby", lobby))
+    application.add_handler(CommandHandler("join", join))
+    application.add_handler(CallbackQueryHandler(button))
 
-    updater.start_polling()
-    updater.idle()
+    await application.start_polling()
+    await application.idle()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
     
