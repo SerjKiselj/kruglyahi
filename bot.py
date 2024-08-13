@@ -122,10 +122,8 @@ async def main():
     application.add_handler(CommandHandler("join", join))
     application.add_handler(CallbackQueryHandler(button))
 
-    await application.start_polling()
-    await application.idle()
+    await application.run_polling()
 
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-    
