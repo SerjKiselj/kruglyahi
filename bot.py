@@ -40,6 +40,20 @@ async def single_game(update: Update, context: CallbackContext) -> None:
     games[game_id]['message_id'] = msg.message_id
     await determine_first_move(game_id)
 
+async def determine_first_move(game_id: str) -> None:
+    game = games[game_id]
+    if game['mode'] == 'single':
+        # ИИ делает первый ход
+        if game['turn'] is None:
+            game['turn'] = 'AI'
+            await ai_move(None, None, game_id)
+        else:
+            # Если игрок делает первый ход, это можно сделать позже
+            pass
+    else:
+        # В многопользовательском режиме определение первого хода нужно сделать по очереди
+        pass
+
 async def invite(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if len(context.args) == 2:
