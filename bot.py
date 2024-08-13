@@ -6,8 +6,8 @@ TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
 games = {}
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('Привет! Используй /newgame, чтобы начать новую игру или /singlegame для игры с AI.')
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -54,8 +54,8 @@ async def handle_invite(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(f'Приглашение отправлено игроку @{user}.')
             else:
                 await update.message.reply_text('Нельзя пригласить себя.')
-        except:
-            await update.message.reply_text('Не удалось найти пользователя с этим username.')
+        except Exception as e:
+            await update.message.reply_text(f'Не удалось найти пользователя с этим username. Ошибка: {e}')
     else:
         await update.message.reply_text('Игра не найдена или уже начата.')
 
