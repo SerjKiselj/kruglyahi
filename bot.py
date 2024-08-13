@@ -6,7 +6,6 @@ import asyncio
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
-
 logger = logging.getLogger(__name__)
 
 # Глобальные переменные для хранения состояния игры
@@ -127,7 +126,7 @@ def check_winner(board: list) -> str:
     return None
 
 async def main() -> None:
-    application = Application.builder().token("YOUR_BOT_TOKEN").build()
+    application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("play", play))
@@ -139,6 +138,5 @@ async def main() -> None:
 
 # Запуск приложения
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
   
