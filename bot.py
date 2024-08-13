@@ -98,27 +98,15 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer('Это поле уже занято.')
 
 async def main() -> None:
-    # Убедитесь, что используете правильный токен
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
-    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("play", play))
     application.add_handler(CommandHandler("invite", invite))
     application.add_handler(CommandHandler("accept", accept))
-
-    # Обработчик нажатий кнопок
     application.add_handler(CallbackQueryHandler(handle_button_click))
 
-    # Запуск бота
     await application.run_polling()
 
 if __name__ == '__main__':
-    # Запуск цикла событий
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+    asyncio.run(main())
