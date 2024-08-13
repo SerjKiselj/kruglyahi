@@ -1,6 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import logging
+import asyncio
 
 # Включение логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -135,8 +136,14 @@ async def main() -> None:
     application.add_handler(CommandHandler("accept", accept))
     application.add_handler(CallbackQueryHandler(handle_button))
 
+    # Вместо asyncio.run, используем run_polling()
     await application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    # Проверяем, если цикл уже запущен, чтобы не конфликтовать
+    if not asyncio.get_event_loop().is_running():
+        asyncio.run(main())
+    else:
+        # Для среды, где цикл уже работает
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
