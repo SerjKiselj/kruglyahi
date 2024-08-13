@@ -1,5 +1,5 @@
 import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
@@ -11,25 +11,29 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 async def new_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
+    user_id = update.message.from_user.id
     games[chat_id] = {
-        'player1': update.message.from_user.id,
+        'player1': user_id,
         'player2': None,
         'board': [' '] * 9,
-        'turn': None,
+        'turn': user_id,
         'game_active': True,
         'mode': 'multiplayer',
         'message_id': None
     }
-    msg = await update.message.reply_text('Новая игра начата! Отправьте команду /invite, чтобы пригласить друга.')
+    invite_button = InlineKeyboardButton('Пригласить друга', callback_data=f'invite_{chat_id}')
+    keyboard = InlineKeyboardMarkup([[invite_button]])
+    msg = await update.message.reply_text('Новая игра начата! Пригласите друга для участия.', reply_markup=keyboard)
     games[chat_id]['message_id'] = msg.message_id
 
 async def single_game(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
+    user_id = update.message.from_user.id
     games[chat_id] = {
-        'player1': update.message.from_user.id,
+        'player1': user_id,
         'player2': 'AI',
         'board': [' '] * 9,
-        'turn': None,
+        'turn': user_id,
         'game_active': True,
         'mode': 'single',
         'message_id': None
@@ -38,31 +42,42 @@ async def single_game(update: Update, context: CallbackContext) -> None:
     games[chat_id]['message_id'] = msg.message_id
     await determine_first_move(update, context)
 
-async def invite(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
-    if chat_id in games and games[chat_id]['player2'] is None:
-        await context.bot.send_message(chat_id, 'Введите @username вашего друга для приглашения:')
-        return
-    else:
-        await update.message.reply_text('Игра уже начата или уже есть два игрока.')
-
 async def handle_invite(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
-    if chat_id in games and games[chat_id]['player2'] is None:
-        user = update.message.text.split('@')[1]
-        try:
-            user_info = await context.bot.get_chat(username=user)
-            user_id = user_info.id
-            if user_id != games[chat_id]['player1']:
-                games[chat_id]['player2'] = user_id
-                await context.bot.send_message(user_id, 'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.')
-                await update.message.reply_text(f'Приглашение отправлено игроку @{user}.')
-            else:
-                await update.message.reply_text('Нельзя пригласить себя.')
-        except Exception as e:
-            await update.message.reply_text(f'Не удалось найти пользователя с этим username. Ошибка: {e}')
+    query = update.callback_query
+    chat_id = query.message.chat_id
+    if query.data.startswith('invite_'):
+        target_chat_id = int(query.data.split('_')[1])
+        if chat_id == target_chat_id:
+            await query.answer('Вы уже создали игру. Пригласите друга через команду /invite.')
+            return
+        
+        if chat_id in games and games[chat_id]['player2'] is None:
+            games[chat_id]['player2'] = query.from_user.id
+            await query.message.reply_text('Вы присоединились к игре! Инициализация...')
+            await determine_first_move(update, context)
+        else:
+            await query.answer('Не удалось присоединиться к игре. Попробуйте снова.')
     else:
-        await update.message.reply_text('Игра не найдена или уже начата.')
+        await query.answer('Неизвестная команда.')
+
+async def handle_forwarded_message(update: Update, context: CallbackContext) -> None:
+    message: Message = update.message
+    if message.forward_from:
+        chat_id = message.chat_id
+        forwarded_user_id = message.forward_from.id
+        if chat_id in games and games[chat_id]['player2'] is None:
+            if forwarded_user_id != games[chat_id]['player1']:
+                games[chat_id]['player2'] = forwarded_user_id
+                await context.bot.send_message(
+                    forwarded_user_id,
+                    'Вас пригласили сыграть в крестики-нолики. Введите /join для начала игры.'
+                )
+                await message.reply_text(f'Приглашение отправлено пользователю {message.forward_from.username}.')
+                await determine_first_move(update, context)
+            else:
+                await message.reply_text('Нельзя пригласить себя.')
+        else:
+            await message.reply_text('Игра не найдена или уже начата.')
 
 async def join(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -212,40 +227,40 @@ def minimax(board, is_maximizing):
 
 def check_winner(board):
     winning_combinations = [
-        (0, 1, 2), (3, 4, 5), (6, 7, 8), # rows
-        (0, 3, 6), (1, 4, 7), (2, 5, 8), # columns
-        (0, 4, 8), (2, 4, 6)  # diagonals
+        (0, 1, 2), (3, 4, 5), (6, 7, 8),
+        (0, 3, 6), (1, 4, 7), (2, 5, 8),
+        (0, 4, 8), (2, 4, 6)
     ]
-    for a, b, c in winning_combinations:
-        if board[a] == board[b] == board[c] and board[a] != ' ':
-            return 'Player1' if board[a] == 'X' else 'AI'
+    for combo in winning_combinations:
+        if board[combo[0]] == board[combo[1]] == board[combo[2]] != ' ':
+            return 'Player1' if board[combo[0]] == 'X' else 'AI'
     return None
 
 async def determine_first_move(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     if chat_id in games:
         game = games[chat_id]
-        if game['mode'] == 'single' and game['turn'] is None:
-            game['turn'] = random.choice([game['player1'], 'AI'])
-            if game['turn'] == 'AI':
+        if game['mode'] == 'single':
+            if random.choice([True, False]):
+                game['turn'] = game['player1']
+                await show_board(update, context)
                 await ai_move(update, context)
             else:
+                game['turn'] = 'AI'
                 await show_board(update, context)
-        elif game['turn'] is None:
+        else:
             game['turn'] = game['player1']
             await show_board(update, context)
 
-def run_bot():
+def main() -> None:
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('newgame', new_game))
     application.add_handler(CommandHandler('singlegame', single_game))
-    application.add_handler(CommandHandler('invite', invite))
+    application.add_handler(MessageHandler(filters.forwarded & ~filters.command, handle_forwarded_message))
     application.add_handler(CommandHandler('join', join))
     application.add_handler(CallbackQueryHandler(handle_button_click))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_invite))
     application.run_polling()
 
 if __name__ == '__main__':
-    run_bot()
-            
+    main()
