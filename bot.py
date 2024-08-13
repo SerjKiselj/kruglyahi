@@ -1,6 +1,6 @@
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
 
@@ -220,7 +220,6 @@ async def determine_first_move(update: Update, context: CallbackContext) -> None
     if chat_id in games:
         game = games[chat_id]
         if game['mode'] == 'single' and game['turn'] is None:
-            # Randomly decide who goes first
             game['turn'] = random.choice([game['player1'], 'AI'])
             if game['turn'] == 'AI':
                 await ai_move(update, context)
