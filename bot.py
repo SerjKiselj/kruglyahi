@@ -1,5 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 # Хранилище для всех текущих игр
 games = {}
@@ -23,7 +23,7 @@ def check_win(board, player):
     ]
     return [player, player, player] in win_conditions
 
-async def start_game(context: ContextTypes.DEFAULT_TYPE, player1, player2):
+async def start_game(context, player1, player2):
     game_id = f"{player1}_{player2}"
     games[game_id] = {
         "board": create_board(),
@@ -49,7 +49,7 @@ async def start_game(context: ContextTypes.DEFAULT_TYPE, player1, player2):
     await context.bot.send_message(chat_id=player1, text="Игра началась! Вы играете за X. Ваш ход.", reply_markup=reply_markup)
     await context.bot.send_message(chat_id=player2, text="Игра началась! Вы играете за O. Ждите своего хода.")
 
-async def lobby(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def lobby(update: Update, context):
     if len(context.args) != 1:
         await update.message.reply_text("Использование: /lobby <ID пользователя для приглашения>")
         return
@@ -59,7 +59,7 @@ async def lobby(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=player2, text=f"Вас пригласили в игру крестики-нолики. Нажмите /join {player1}, чтобы принять приглашение.")
 
-async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def join(update: Update, context):
     if len(context.args) != 1:
         await update.message.reply_text("Использование: /join <ID пользователя создавшего лобби>")
         return
@@ -69,7 +69,7 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await start_game(context, player1, player2)
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button(update: Update, context):
     query = update.callback_query
     await query.answer()
 
@@ -115,21 +115,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=f"Ходит игрок {game['players'][game['current_player']]}. \n\n{board_to_string(board)}", reply_markup=InlineKeyboardMarkup(buttons))
 
-async def main():
+def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
     application.add_handler(CommandHandler("lobby", lobby))
     application.add_handler(CommandHandler("join", join))
     application.add_handler(CallbackQueryHandler(button))
 
-    await application.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    # Если цикл событий уже запущен, используем run_polling() без asyncio.run()
-    try:
-        asyncio.run(main())
-    except RuntimeError:  # В случае ошибки запускаем run_polling() напрямую
-        application = Application.builder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
-        application.run_polling()
-        
+    main()
+    
