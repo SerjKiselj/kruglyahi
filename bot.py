@@ -1,5 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
 import random
 
 TOKEN = '7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s'
@@ -119,7 +119,7 @@ async def handle_button_click(update: Update, context: CallbackContext) -> None:
         await query.answer('Игра не найдена.')
 
 async def ai_move(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
+    chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     if chat_id in games and games[chat_id]['mode'] == 'single':
         game = games[chat_id]
         available_moves = [i for i, spot in enumerate(game['board']) if spot == ' ']
@@ -160,3 +160,4 @@ def run_bot():
 
 if __name__ == '__main__':
     run_bot()
+    
