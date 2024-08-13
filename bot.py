@@ -151,9 +151,8 @@ async def ai_move(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     if chat_id in games and games[chat_id]['mode'] == 'single':
         game = games[chat_id]
-        available_moves = [i for i, spot in enumerate(game['board']) if spot == ' ']
-        move = random.choice(available_moves)
-        game['board'][move] = 'O'
+        best_move = find_best_move(game['board'])
+        game['board'][best_move] = 'O'
         winner = check_winner(game['board'])
         
         if winner:
@@ -165,6 +164,47 @@ async def ai_move(update: Update, context: CallbackContext) -> None:
         else:
             game['turn'] = game['player1']
             await show_board(update, context)
+
+def find_best_move(board):
+    best_move = -1
+    best_score = -float('inf')
+    for move in range(9):
+        if board[move] == ' ':
+            board[move] = 'O'
+            score = minimax(board, False)
+            board[move] = ' '
+            if score > best_score:
+                best_score = score
+                best_move = move
+    return best_move
+
+def minimax(board, is_maximizing):
+    winner = check_winner(board)
+    if winner == 'AI':
+        return 1
+    elif winner == 'Player1':
+        return -1
+    elif ' ' not in board:
+        return 0
+
+    if is_maximizing:
+        best_score = -float('inf')
+        for move in range(9):
+            if board[move] == ' ':
+                board[move] = 'O'
+                score = minimax(board, False)
+                board[move] = ' '
+                best_score = max(score, best_score)
+        return best_score
+    else:
+        best_score = float('inf')
+        for move in range(9):
+            if board[move] == ' ':
+                board[move] = 'X'
+                score = minimax(board, True)
+                board[move] = ' '
+                best_score = min(score, best_score)
+        return best_score
 
 def check_winner(board):
     winning_combinations = [
@@ -189,3 +229,4 @@ def run_bot():
 
 if __name__ == '__main__':
     run_bot()
+    
