@@ -73,7 +73,7 @@ def block_or_win(board, player, size, win_length):
     
     return None
 
-def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float('-inf'), beta=float('inf')):
+def minimax(board, player, size, win_length, depth=0, max_depth=3, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -85,7 +85,7 @@ def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float(
         return (0, None)            # Ничья
 
     # Ограничение глубины рекурсии
-    if depth == max_depth:
+    if depth == max_depth or not empty_positions:
         return (heuristic_evaluation(board, player, size, win_length), None)
 
     best_move = None
@@ -320,4 +320,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-               
+        
