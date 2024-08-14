@@ -146,6 +146,7 @@ def make_ai_move(board, difficulty):
         # Improved strategy for easy difficulty
         move = block_or_win(board, PLAYER_O)
         if move is None:
+            # Use a simple heuristic for the easy level
             move = random.choice(empty_positions)
         else:
             return move
@@ -167,3 +168,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
