@@ -3,7 +3,6 @@ import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 import asyncio
-import uuid
 
 # Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -13,9 +12,6 @@ logger = logging.getLogger(__name__)
 EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
-
-games = {}  # Словарь для хранения игр по уникальному коду
-player_sessions = {}  # Словарь для хранения игровых сессий пользователей
 
 def start_game(size=3, win_length=3):
     return [EMPTY] * (size * size)
@@ -77,7 +73,7 @@ def block_or_win(board, player, size, win_length):
     
     return None
 
-def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('-inf'), beta=float('inf')):
+def minimax(board, player, size, win_length, depth=0, max_depth=3, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -165,8 +161,7 @@ def score_position(board, row, col, player, size, win_length):
 
 def format_keyboard(board, size):
     keyboard = [
-        [InlineKeyboardButton(text=board[i*size + j] if board[i*size + j] else '   ', callback_data=str(i*size + j)) 
-         for j in range(size)]
+        [InlineKeyboardButton(board[i*size + j] or ' ', callback_data=str(i*size + j)) for j in range(size)]
         for i in range(size)
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -174,9 +169,9 @@ def format_keyboard(board, size):
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Начать игру", callback_data='start_game')],
-        [InlineKeyboardButton("Мультиплеер", callback_data='multiplayer_mode')],
         [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')],
-        [InlineKeyboardButton("Выбрать размер поля", callback_data='choose_size')]
+        [InlineKeyboardButton("Выбрать размер поля", callback_data='choose_size')],
+        [InlineKeyboardButton("Играть с другом", callback_data='play_with_friend')]
     ])
 
 def difficulty_keyboard():
@@ -194,157 +189,113 @@ def size_keyboard():
         [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
 
+def game_code_keyboard(code):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Играть", callback_data=f'join_{code}')],
+        [InlineKeyboardButton("Отмена", callback_data='cancel')]
+    ])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
     difficulty = context.user_data.get('difficulty', 'ordinary')
     await update.message.reply_text(
-        f"Текущий размер поля: {size}x{size}\nТекущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}",
+        f"Текущий размер поля: {size}x{size}\n"
+        f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
+        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
         reply_markup=main_menu_keyboard()
     )
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    data = query.data
-
-    size = context.user_data.get('size', 3)
-    win_length = context.user_data.get('win_length', 3)
     board = context.user_data.get('board')
-    is_multiplayer = context.user_data.get('is_multiplayer', False)
-    current_player = context.user_data.get('current_player', None)
+    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
+    win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
 
-    await query.answer()
+    # Убедитесь, что есть ключи по умолчанию
+    if 'difficulty' not in context.user_data:
+        context.user_data['difficulty'] = 'ordinary'
 
-    if data.isdigit() and board:
-        position = int(data)
+    if 'size' not in context.user_data:
+        context.user_data['size'] = 3
 
-        if not is_multiplayer or (is_multiplayer and current_player == update.effective_chat.id):
-            if board[position] == EMPTY:
-                board[position] = PLAYER_X if not is_multiplayer else PLAYER_O
+    if query.data == 'start_game':
+        context.user_data['board'] = start_game(size, win_length)
+        context.user_data['current_turn'] = PLAYER_X
+        context.user_data['player1'] = query.from_user.id
+        context.user_data['player2'] = None
+        context.user_data['game_started'] = True
+        context.user_data['game_code'] = random.randint(1000, 9999)
+        await query.edit_message_text("Игра началась! Ваш ход.", reply_markup=format_keyboard(context.user_data['board'], size))
 
-                if check_win(board, PLAYER_X, size, win_length):
-                    await query.edit_message_text("Вы победили!", reply_markup=format_keyboard(board, size))
-                    return
-
-                if check_draw(board):
-                    await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
-                    return
-
-                if is_multiplayer:
-                    game_code = player_sessions[update.effective_chat.id]
-                    opponent_chat_id = next(player for player in games[game_code]['players'] if player != update.effective_chat.id)
-                    
-                    # Обновляем доску для второго игрока
-                    await context.bot.send_message(
-                        chat_id=opponent_chat_id,
-                        text="Ваш ход.",
-                        reply_markup=format_keyboard(board, size)
-                    )
-                    
-                    context.user_data['current_player'] = opponent_chat_id
-                    await query.edit_message_text("Ожидание хода другого игрока...", reply_markup=format_keyboard(board, size))
-                else:
-                    ai_move = make_ai_move(board, context.user_data.get('difficulty', 'ordinary'), size, win_length)
-                    await query.edit_message_text(
-                        f"Вы сделали ход: {position + 1}\nБот сделал ход: {ai_move + 1}",
-                        reply_markup=format_keyboard(board, size)
-                    )
-
-                    if check_win(board, PLAYER_O, size, win_length):
-                        await query.edit_message_text("Бот победил!", reply_markup=format_keyboard(board, size))
-                        return
-
-                    if check_draw(board):
-                        await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
-                        return
-
-                    context.user_data['current_player'] = update.effective_chat.id
-                    await query.edit_message_text("Ваш ход.", reply_markup=format_keyboard(board, size))
-        else:
-            await query.edit_message_text("Не ваша очередь ходить.")
-
-    elif data == 'start_game':
-        context.user_data['board'] = start_game(size)
-        context.user_data['is_multiplayer'] = False  # Локальный режим
-        context.user_data['current_player'] = update.effective_chat.id
-        await query.edit_message_text("Начнем игру!", reply_markup=format_keyboard(context.user_data['board'], size))
-
-    elif data == 'multiplayer_mode':
-        context.user_data['is_multiplayer'] = True
-        game_code = str(uuid.uuid4())[:8]  # Генерируем уникальный код игры
-        games[game_code] = {
-            'board': start_game(size),
-            'size': size,
-            'win_length': win_length,
-            'players': [update.effective_chat.id]
-        }
-        player_sessions[update.effective_chat.id] = game_code
-        context.user_data['current_player'] = update.effective_chat.id
-
-        await query.edit_message_text(f"Код игры: {game_code}\n"
-                                      f"Поделитесь этим кодом с другом, чтобы он присоединился к игре. Используйте команду /join_game <код>.")
-
-    elif data == 'choose_difficulty':
+    elif query.data == 'choose_difficulty':
         await query.edit_message_text("Выберите сложность:", reply_markup=difficulty_keyboard())
 
-    elif data.startswith('difficulty_'):
-        difficulty = data.split('_')[1]
-        context.user_data['difficulty'] = difficulty
-        await query.edit_message_text(f"Вы выбрали сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}", reply_markup=main_menu_keyboard())
-
-    elif data == 'choose_size':
+    elif query.data == 'choose_size':
         await query.edit_message_text("Выберите размер поля:", reply_markup=size_keyboard())
 
-    elif data.startswith('size_'):
-        size = int(data.split('_')[1])
-        context.user_data['size'] = size
-        context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации по умолчанию
-        await query.edit_message_text(f"Вы выбрали размер поля: {size}x{size}", reply_markup=main_menu_keyboard())
+    elif query.data.startswith('difficulty_'):
+        context.user_data['difficulty'] = query.data.split('_')[1]
+        await query.edit_message_text(f"Сложность установлена на: {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}", reply_markup=main_menu_keyboard())
 
-    elif data == 'cancel':
-        await query.edit_message_text("Действие отменено.", reply_markup=main_menu_keyboard())
+    elif query.data.startswith('size_'):
+        context.user_data['size'] = int(query.data.split('_')[1])
+        await query.edit_message_text(f"Размер поля установлен на: {context.user_data['size']}x{context.user_data['size']}", reply_markup=main_menu_keyboard())
 
-async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        code = context.args[0]
-        if code in games:
-            if len(games[code]['players']) < 2:
-                games[code]['players'].append(update.message.chat_id)
-                player_sessions[update.message.chat_id] = code
+    elif query.data == 'play_with_friend':
+        code = random.randint(1000, 9999)
+        context.user_data['game_code'] = code
+        await query.edit_message_text("Отправьте код вашему другу. Он сможет присоединиться к игре, используя код ниже.", reply_markup=game_code_keyboard(code))
 
-                await update.message.reply_text(
-                    f"Вы присоединились к игре с кодом: {code}. Игра начинается!"
-                )
-
-                # Сообщение первому игроку
-                await context.bot.send_message(
-                    chat_id=games[code]['players'][0],
-                    text="Ваш друг присоединился к игре! Вы начинаете.",
-                    reply_markup=format_keyboard(games[code]['board'], games[code]['size'])
-                )
-                context.user_data['current_player'] = games[code]['players'][0]
+    elif query.data.startswith('join_'):
+        code = query.data.split('_')[1]
+        if code == str(context.user_data.get('game_code')):
+            if context.user_data.get('player2') is None:
+                context.user_data['player2'] = query.from_user.id
+                await query.edit_message_text("Вы присоединились к игре. Ожидайте, пока первый игрок начнет.", reply_markup=main_menu_keyboard())
             else:
-                await update.message.reply_text("Эта игра уже заполнена.")
+                await query.edit_message_text("Игра уже началась.")
         else:
-            await update.message.reply_text("Неверный код игры.")
-    else:
-        await update.message.reply_text("Вы должны ввести код игры. Например, /join_game <код>.")
+            await query.edit_message_text("Неверный код.")
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f'Update {update} caused error {context.error}')
+    elif query.data == 'cancel':
+        await query.edit_message_text("Отмена действия.", reply_markup=main_menu_keyboard())
 
-def main():
-    TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
+    elif query.data.isdigit():
+        if context.user_data.get('game_started') and context.user_data['current_turn'] == query.from_user.id:
+            move = int(query.data)
+            if board[move] == EMPTY:
+                board[move] = PLAYER_X
+                if check_win(board, PLAYER_X, size, win_length):
+                    await query.edit_message_text("Поздравляем! Вы выиграли!", reply_markup=format_keyboard(board, size))
+                    context.user_data['game_started'] = False
+                elif check_draw(board):
+                    await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+                    context.user_data['game_started'] = False
+                else:
+                    # Ход ИИ
+                    make_ai_move(board, context.user_data['difficulty'], size, win_length)
+                    if check_win(board, PLAYER_O, size, win_length):
+                        await query.edit_message_text("Игра закончилась. ИИ выиграл!", reply_markup=format_keyboard(board, size))
+                        context.user_data['game_started'] = False
+                    elif check_draw(board):
+                        await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+                        context.user_data['game_started'] = False
+                    else:
+                        context.user_data['current_turn'] = context.user_data['player2'] if context.user_data['current_turn'] == context.user_data['player1'] else context.user_data['player1']
+                        await query.edit_message_text("Ваш ход.", reply_markup=format_keyboard(board, size))
+            else:
+                await query.edit_message_text("Эта ячейка уже занята!", reply_markup=format_keyboard(board, size))
+        else:
+            await query.answer("Это не ваш ход!", show_alert=True)
 
-    app = Application.builder().token(TOKEN).build()
+async def main():
+    application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("join_game", join_game))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_error_handler(error_handler)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
 
-    print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    app.run_polling()
+    await application.run_polling()
 
-if __name__ == '__main__':
-    main()
-                    
+if __name__ == "__main__":
+    asyncio.run(main())
+    
