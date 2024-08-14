@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes, CommandHandler
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name%) - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -40,25 +40,65 @@ def make_ai_move(board, difficulty):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if difficulty == 'easy':
+        # Легкий уровень: случайный выбор
         move = random.choice(empty_positions)
+    elif difficulty == 'medium':
+        # Средний уровень: блокировка выигрыша и случайный выбор
+        move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
     else:
-        for move in empty_positions:
-            board[move] = PLAYER_O
-            if check_win(board, PLAYER_O):
-                return move
-            board[move] = EMPTY
-        
-        for move in empty_positions:
-            board[move] = PLAYER_X
-            if check_win(board, PLAYER_X):
-                board[move] = PLAYER_O
-                return move
-            board[move] = EMPTY
-
-        move = random.choice(empty_positions)
+        # Сложный уровень: минимакс алгоритм
+        move = minimax(board, PLAYER_O)[1]
     
     board[move] = PLAYER_O
     return move
+
+def block_or_win(board, player):
+    opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
+    for move in [i for i, cell in enumerate(board) if cell == EMPTY]:
+        board[move] = player
+        if check_win(board, player):
+            board[move] = EMPTY
+            return move
+        board[move] = EMPTY
+    
+    for move in [i for i, cell in enumerate(board) if cell == EMPTY]:
+        board[move] = opponent
+        if check_win(board, opponent):
+            board[move] = EMPTY
+            return move
+        board[move] = EMPTY
+    
+    return None
+
+def minimax(board, player):
+    opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
+    empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
+
+    if check_win(board, PLAYER_X):
+        return (-10, None)
+    if check_win(board, PLAYER_O):
+        return (10, None)
+    if check_draw(board):
+        return (0, None)
+
+    best_score = float('-inf') if player == PLAYER_O else float('inf')
+    best_move = None
+
+    for move in empty_positions:
+        board[move] = player
+        score = minimax(board, opponent)[0]
+        board[move] = EMPTY
+
+        if player == PLAYER_O:
+            if score > best_score:
+                best_score = score
+                best_move = move
+        else:
+            if score < best_score:
+                best_score = score
+                best_move = move
+
+    return (best_score, best_move)
 
 def format_keyboard(board):
     keyboard = [
@@ -76,6 +116,7 @@ def main_menu_keyboard():
 def difficulty_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Легкий", callback_data='difficulty_easy')],
+        [InlineKeyboardButton("Средний", callback_data='difficulty_medium')],
         [InlineKeyboardButton("Сложный", callback_data='difficulty_hard')],
         [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
@@ -112,6 +153,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == 'difficulty_easy':
         context.user_data['difficulty'] = 'easy'
         await query.message.edit_text("Уровень сложности изменен на Легкий.", reply_markup=main_menu_keyboard())
+        return
+
+    if query.data == 'difficulty_medium':
+        context.user_data['difficulty'] = 'medium'
+        await query.message.edit_text("Уровень сложности изменен на Средний.", reply_markup=main_menu_keyboard())
         return
 
     if query.data == 'difficulty_hard':
