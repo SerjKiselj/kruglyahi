@@ -153,7 +153,10 @@ async def main():
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    await app.run_polling()
+    try:
+        await app.run_polling()
+    except KeyboardInterrupt:
+        print("Бот остановлен.")
 
 if __name__ == '__main__':
     import asyncio
