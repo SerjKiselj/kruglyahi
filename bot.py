@@ -189,12 +189,8 @@ def size_keyboard():
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    difficulty = context.user_data.get('difficulty', 'ordinary')
     await update.message.reply_text(
-        f"Текущий размер поля: {size}x{size}\n"
-        f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
-        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
+        "Привет! Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
         reply_markup=main_menu_keyboard()
     )
 
@@ -207,9 +203,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
         context.user_data['player_turn'] = True
+        context.user_data['difficulty'] = 'ordinary'
 
         await query.message.edit_text(
-            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}\nСложность: {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}",
+            "Игра началась! Вы играете за 'X'.",
             reply_markup=format_keyboard(context.user_data['board'], size)
         )
         return
@@ -312,4 +309,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-                                            
+    
