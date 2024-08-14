@@ -54,7 +54,7 @@ def make_ai_move(board, difficulty, size, win_length):
             move = random.choice(empty_positions)
         else:
             move = block_or_win(board, PLAYER_O, size, win_length) or minimax(board, PLAYER_O, size, win_length)[1]
-    else:
+    else:  # 'hard'
         move = minimax(board, PLAYER_O, size, win_length)[1]
     
     board[move] = PLAYER_O
@@ -78,7 +78,7 @@ def block_or_win(board, player, size, win_length):
     
     return None
 
-def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('-inf'), beta=float('inf')):
+def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
