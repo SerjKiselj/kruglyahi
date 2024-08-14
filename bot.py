@@ -13,6 +13,7 @@ EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
 
+# Хранилище для игр и кодов комнат
 games = {}
 
 def generate_room_code():
@@ -51,24 +52,55 @@ def format_keyboard(board, size):
     return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Хочешь сыграть в крестики-нолики? Отправь команду /create чтобы создать комнату или /join <код> чтобы присоединиться.")
+    keyboard = [
+        [InlineKeyboardButton("Играть с ИИ", callback_data="play_with_ai")],
+        [InlineKeyboardButton("Играть с другом", callback_data="play_with_friend")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text("Выбери режим игры:", reply_markup=reply_markup)
+
+async def select_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    mode = query.data
+
+    if mode == "play_with_ai":
+        await play_with_ai(update, context)
+    elif mode == "play_with_friend":
+        await select_friend_option(update, context)
+
+async def play_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    board = start_game()
+    context.user_data['board'] = board
+    context.user_data['turn'] = PLAYER_X
+    context.user_data['size'] = 3
+
+    await update.callback_query.message.reply_text(
+        "Ты играешь с ИИ. Начинаем!",
+        reply_markup=format_keyboard(board, context.user_data['size'])
+    )
+
+async def select_friend_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Создать комнату", callback_data="create_room")],
+        [InlineKeyboardButton("Присоединиться к комнате", callback_data="join_room")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.callback_query.message.reply_text("Выбери опцию:", reply_markup=reply_markup)
 
 async def create_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
     room_code = generate_room_code()
     context.user_data['room_code'] = room_code
     games[room_code] = {
         'board': start_game(),
-        'players': [update.message.from_user.id],
+        'players': [update.callback_query.from_user.id],
         'turn': PLAYER_X,
         'size': 3
     }
-    await update.message.reply_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
+    await update.callback_query.message.reply_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
 
 async def join_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) == 0:
-        await update.message.reply_text("Пожалуйста, укажи код комнаты для присоединения: /join <код>")
-        return
-
     room_code = context.args[0].upper()
     if room_code not in games:
         await update.message.reply_text("Комната с таким кодом не найдена.")
@@ -150,10 +182,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
     application = Application.builder().token('7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s').build()
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('create', create_room))
-    application.add_handler(CommandHandler('join', join_room))
+    application.add_handler(CallbackQueryHandler(select_mode, pattern="^(play_with_ai|play_with_friend)$"))
+    application.add_handler(CallbackQueryHandler(create_room, pattern="^create_room$"))
+    application.add_handler(CallbackQueryHandler(join_room, pattern="^join_room$"))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler('help', help_command))
 
     application.run_polling()
-    
+        
