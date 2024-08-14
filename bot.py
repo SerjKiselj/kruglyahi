@@ -290,14 +290,14 @@ async def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
-    await application.run_polling()
+
+    # Проверяем, запущен ли цикл событий
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        await application.run_polling()
+    else:
+        await application.run_polling()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "This event loop is already running" in str(e):
-            pass
-        else:
-            raise
-                
+    asyncio.run(main())
+    
