@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters, ContextTypes
 import random
 import string
 
@@ -66,15 +66,17 @@ async def select_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await select_friend_option(update, context)
 
 async def select_ai_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("Легко", callback_data="ai_easy")],
         [InlineKeyboardButton("Сложно", callback_data="ai_hard")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.message.reply_text("Выбери сложность:", reply_markup=reply_markup)
+    await query.message.edit_text("Выбери сложность:", reply_markup=reply_markup)
 
 async def play_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    difficulty = update.callback_query.data
+    query = update.callback_query
+    difficulty = query.data
     context.user_data['difficulty'] = difficulty
     keyboard = [
         [InlineKeyboardButton("3x3", callback_data="3")],
@@ -82,40 +84,43 @@ async def play_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("5x5", callback_data="5")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.message.reply_text("Выбери размер поля:", reply_markup=reply_markup)
+    await query.message.edit_text("Выбери размер поля:", reply_markup=reply_markup)
 
 async def setup_ai_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    size = int(update.callback_query.data)
+    query = update.callback_query
+    size = int(query.data)
     board = start_game(size)
     context.user_data['board'] = board
     context.user_data['turn'] = PLAYER_X
     context.user_data['size'] = size
-    await update.callback_query.message.reply_text(
+    await query.message.edit_text(
         f"Ты играешь с ИИ на поле {size}x{size}. Начинаем!",
         reply_markup=format_keyboard(board, size)
     )
 
 async def select_friend_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("Создать комнату", callback_data="create_room")],
         [InlineKeyboardButton("Присоединиться к комнате", callback_data="join_room")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.message.reply_text("Выбери опцию:", reply_markup=reply_markup)
+    await query.message.edit_text("Выбери опцию:", reply_markup=reply_markup)
 
 async def create_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     room_code = generate_room_code()
     context.user_data['room_code'] = room_code
     games[room_code] = {
         'board': start_game(),
-        'players': [update.callback_query.from_user.id],
+        'players': [query.from_user.id],
         'turn': PLAYER_X,
         'size': 3
     }
-    await update.callback_query.message.reply_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
+    await query.message.edit_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
 
 async def join_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Введи код комнаты для присоединения:")
+    await update.callback_query.message.reply_text("Введи код комнаты для присоединения:")
 
 async def process_room_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     room_code = update.message.text.upper()
@@ -196,15 +201,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
     application = Application.builder().token('7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s').build()
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CallbackQueryHandler(select_mode, pattern="^(select_ai_difficulty|play_with_friend)$"))
-    application.add_handler(CallbackQueryHandler(select_ai_difficulty, pattern="^select_ai_difficulty$"))
-    application.add_handler(CallbackQueryHandler(play_with_ai, pattern="^(ai_easy|ai_hard)$"))
-    application.add_handler(CallbackQueryHandler(setup_ai_game, pattern="^[3-5]$"))
-    application.add_handler(CallbackQueryHandler(create_room, pattern="^create_room$"))
-    application.add_handler(CallbackQueryHandler(join_room, pattern="^join_room$"))
-    application.add_handler(CommandHandler('join', process_room_code))
+    application.add_handler(CallbackQueryHandler(select_mode, pattern='^(play_with_ai|play_with_friend)$'))
+    application.add_handler(CallbackQueryHandler(select_ai_difficulty, pattern='^select_ai_difficulty$'))
+    application.add_handler(CallbackQueryHandler(play_with_ai, pattern='^[3-5]$'))
+    application.add_handler(CallbackQueryHandler(select_friend_option, pattern='^play_with_friend$'))
+    application.add_handler(CallbackQueryHandler(create_room, pattern='^create_room$'))
+    application.add_handler(CallbackQueryHandler(join_room, pattern='^join_room$'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_room_code))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler('help', help_command))
 
     application.run_polling()
-                              
+    
