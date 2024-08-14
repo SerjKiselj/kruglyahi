@@ -1,7 +1,7 @@
 import logging
-import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+import asyncio
 
 # Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -40,16 +40,13 @@ def make_ai_move(board, difficulty):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if difficulty == 'easy':
-        # Легкий уровень: случайный выбор с шансом на ошибку
         if random.random() < 0.7:
             move = random.choice(empty_positions)
         else:
             move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
     elif difficulty == 'medium':
-        # Средний уровень: блокировка выигрыша и случайный выбор
         move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
     else:
-        # Сложный уровень: минимакс алгоритм
         move = minimax(board, PLAYER_O)[1]
     
     board[move] = PLAYER_O
