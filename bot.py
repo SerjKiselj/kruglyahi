@@ -1,50 +1,80 @@
+import logging
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+import asyncio
 
-# Constants
-EMPTY = 0
-PLAYER_X = 1
-PLAYER_O = 2
-BOARD_SIZE = 9
+# Логи для отладки
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def create_board():
-    return [EMPTY] * BOARD_SIZE
+# Константы
+EMPTY = ''
+PLAYER_X = 'X'
+PLAYER_O = 'O'
+WIN_COMBOS = [
+    [0, 1, 2],  # верхний ряд
+    [3, 4, 5],  # средний ряд
+    [6, 7, 8],  # нижний ряд
+    [0, 3, 6],  # первый столбец
+    [1, 4, 7],  # второй столбец
+    [2, 5, 8],  # третий столбец
+    [0, 4, 8],  # диагональ слева направо
+    [2, 4, 6],  # диагональ справа налево
+]
 
-def display_board(board):
-    symbols = {EMPTY: '⬜️', PLAYER_X: '❌', PLAYER_O: '⭕️'}
-    return '\n'.join(' '.join(symbols[cell] for cell in board[i:i+3]) for i in range(0, BOARD_SIZE, 3))
+# Функции для работы с игрой
+
+def start_game():
+    return [EMPTY] * 9
 
 def check_win(board, player):
-    win_conditions = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8],  # rows
-        [0, 3, 6], [1, 4, 7], [2, 5, 8],  # columns
-        [0, 4, 8], [2, 4, 6]              # diagonals
-    ]
-    return any(all(board[pos] == player for pos in condition) for condition in win_conditions)
+    for combo in WIN_COMBOS:
+        if all(board[pos] == player for pos in combo):
+            return True
+    return False
 
 def check_draw(board):
-    return all(cell != EMPTY for cell in board) and not check_win(board, PLAYER_X) and not check_win(board, PLAYER_O)
+    return all(cell != EMPTY for cell in board)
+
+def make_ai_move(board, difficulty):
+    empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
+
+    if difficulty == 'easy':
+        # Легкий уровень: 70% случайных ходов, 30% блокировки или выигрыша
+        if random.random() < 0.7:
+            move = random.choice(empty_positions)
+        else:
+            move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
+    elif difficulty == 'medium':
+        # Средний уровень: блокировка и выигрыш, или случайный ход
+        move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
+    else:  # Сложный уровень
+        # Сложный уровень: использование Minimax
+        _, move = minimax(board, PLAYER_O, float('-inf'), float('inf'))
+
+    board[move] = PLAYER_O
+    return move
 
 def block_or_win(board, player):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
-    for move in range(BOARD_SIZE):
-        if board[move] == EMPTY:
-            board[move] = player
-            if check_win(board, player):
-                board[move] = EMPTY
-                return move
+    for move in [i for i, cell in enumerate(board) if cell == EMPTY]:
+        board[move] = player
+        if check_win(board, player):
             board[move] = EMPTY
-    for move in range(BOARD_SIZE):
-        if board[move] == EMPTY:
-            board[move] = opponent
-            if check_win(board, opponent):
-                board[move] = EMPTY
-                return move
+            return move
+        board[move] = EMPTY
+
+    for move in [i for i, cell in enumerate(board) if cell == EMPTY]:
+        board[move] = opponent
+        if check_win(board, opponent):
             board[move] = EMPTY
+            return move
+        board[move] = EMPTY
+
     return None
 
-def minimax(board, player, alpha, beta):
+def minimax(board, player, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -84,87 +114,135 @@ def minimax(board, player, alpha, beta):
                 break
         return (best_score, best_move)
 
+def format_keyboard(board):
+    keyboard = [
+        [InlineKeyboardButton(board[i*3 + j] or ' ', callback_data=str(i*3 + j)) for j in range(3)]
+        for i in range(3)
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def main_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Начать игру", callback_data='start_game')],
+        [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')]
+    ])
+
+def difficulty_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Легкий", callback_data='difficulty_easy')],
+        [InlineKeyboardButton("Средний", callback_data='difficulty_medium')],
+        [InlineKeyboardButton("Сложный", callback_data='difficulty_hard')],
+        [InlineKeyboardButton("Отмена", callback_data='cancel')]
+    ])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("Start Game", callback_data='start')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Welcome! Press "Start Game" to begin.', reply_markup=reply_markup)
+    await update.message.reply_text(
+        "Привет! Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
+        reply_markup=main_menu_keyboard()
+    )
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    board = context.user_data.get('board')
 
-    if query.data == 'start':
-        context.user_data['board'] = create_board()
+    if query.data == 'start_game':
+        context.user_data['board'] = start_game()
+        context.user_data['player_turn'] = True
         context.user_data['difficulty'] = 'easy'
-        context.user_data['player'] = PLAYER_X
-        context.user_data['game_active'] = True
-        
-        await query.edit_message_text(text="Game started! Your move:", reply_markup=build_board_keyboard(context.user_data['board']))
 
-    elif query.data.startswith('move_'):
-        if not context.user_data.get('game_active', False):
-            await query.edit_message_text(text="Start a game first by pressing 'Start Game'.")
-            return
+        await query.message.edit_text(
+            "Игра началась! Вы играете за 'X'.",
+            reply_markup=format_keyboard(context.user_data['board'])
+        )
+        return
 
-        move = int(query.data.split('_')[1])
-        board = context.user_data['board']
+    if query.data == 'choose_difficulty':
+        await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
+        return
 
-        if board[move] != EMPTY:
-            await query.edit_message_text(text="Invalid move. Try again.")
-            return
+    if query.data == 'difficulty_easy':
+        context.user_data['difficulty'] = 'easy'
+        await query.message.edit_text("Уровень сложности изменен на Легкий.", reply_markup=main_menu_keyboard())
+        return
 
-        board[move] = context.user_data['player']
-        if check_win(board, context.user_data['player']):
-            await query.edit_message_text(text=f"{display_board(board)}\nCongratulations, you won!")
-            context.user_data['game_active'] = False
-            return
-        elif check_draw(board):
-            await query.edit_message_text(text=f"{display_board(board)}\nIt's a draw!")
-            context.user_data['game_active'] = False
-            return
+    if query.data == 'difficulty_medium':
+        context.user_data['difficulty'] = 'medium'
+        await query.message.edit_text("Уровень сложности изменен на Средний.", reply_markup=main_menu_keyboard())
+        return
 
-        ai_move = make_ai_move(board, context.user_data['difficulty'])
-        if check_win(board, PLAYER_O):
-            await query.edit_message_text(text=f"{display_board(board)}\nAI wins! Better luck next time.")
-            context.user_data['game_active'] = False
-            return
-        elif check_draw(board):
-            await query.edit_message_text(text=f"{display_board(board)}\nIt's a draw!")
-            context.user_data['game_active'] = False
-            return
+    if query.data == 'difficulty_hard':
+        context.user_data['difficulty'] = 'hard'
+        await query.message.edit_text("Уровень сложности изменен на Сложный.", reply_markup=main_menu_keyboard())
+        return
 
-        await query.edit_message_text(text=f"{display_board(board)}\nYour move:", reply_markup=build_board_keyboard(board))
+    if query.data == 'cancel':
+        await query.message.edit_text("Отменено.", reply_markup=main_menu_keyboard())
+        return
 
-def build_board_keyboard(board):
-    keyboard = [[InlineKeyboardButton(f"{'❌' if cell == PLAYER_X else '⭕️' if cell == PLAYER_O else '⬜️'}", callback_data=f'move_{i}') for i, cell in enumerate(board[i:i+3])] for i in range(0, BOARD_SIZE, 3)]
-    return InlineKeyboardMarkup(keyboard)
+    if not board:
+        await query.message.reply_text("Начните новую игру командой /start")
+        return
 
-def make_ai_move(board, difficulty):
-    empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
+    player_move = int(query.data)
 
-    if difficulty == 'easy':
-        # Improved strategy for easy difficulty
-        move = block_or_win(board, PLAYER_O)
-        if move is None:
-            # Use a simple heuristic for the easy level
-            move = random.choice(empty_positions)
-        else:
-            return move
-    elif difficulty == 'medium':
-        move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
-    else:  # 'hard' difficulty
-        _, move = minimax(board, PLAYER_O, float('-inf'), float('inf'))
+    if board[player_move] != EMPTY:
+        await query.answer("Эта клетка уже занята!")
+        return
 
-    board[move] = PLAYER_O
-    return move
+    if not context.user_data['player_turn']:
+        await query.answer("Сейчас ход ИИ!")
+        return
+
+    board[player_move] = PLAYER_X
+    context.user_data['player_turn'] = False
+
+    if check_win(board, PLAYER_X):
+        await update_message(update, context)
+        await query.message.reply_text("Поздравляю, вы выиграли!")
+        context.user_data['board'] = None
+        return
+
+    if check_draw(board):
+        await update_message(update, context)
+        await query.message.reply_text("Ничья!")
+        context.user_data['board'] = None
+        return
+
+    ai_move = make_ai_move(board, context.user_data['difficulty'])
+
+    if check_win(board, PLAYER_O):
+        await update_message(update, context)
+        await query.message.reply_text("Вы проиграли!")
+        context.user_data['board'] = None
+        return
+
+    if check_draw(board):
+        await update_message(update, context)
+        await query.message.reply_text("Ничья!")
+        context.user_data['board'] = None
+        return
+
+    context.user_data['player_turn'] = True
+    await update_message(update, context)
+
+async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    board = context.user_data.get('board')
+    if board:
+        await update.callback_query.message.edit_text(
+            "Игра в крестики-нолики\n\n",
+            reply_markup=format_keyboard(board)
+        )
 
 def main():
-    application = Application.builder().token('7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s').build()
+    TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CallbackQueryHandler(button))
+    app = Application.builder().token(TOKEN).build()
 
-    application.run_polling()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button))
+
+    print("Бот запущен. Нажмите Ctrl+C для завершения.")
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
