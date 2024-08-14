@@ -45,11 +45,14 @@ def make_ai_move(board, difficulty, size, win_length):
 
     if difficulty == 'easy':
         if random.random() < 0.7:
+            move = block_or_win(board, PLAYER_O, size, win_length) or random.choice(empty_positions)
+        else:
+            move = random.choice(empty_positions)
+    elif difficulty == 'medium':
+        if random.random() < 0.3:
             move = random.choice(empty_positions)
         else:
-            move = block_or_win(board, PLAYER_O, size, win_length) or random.choice(empty_positions)
-    elif difficulty == 'medium':
-        move = block_or_win(board, PLAYER_O, size, win_length) or random.choice(empty_positions)
+            move = block_or_win(board, PLAYER_O, size, win_length) or minimax(board, PLAYER_O, size, win_length)[1]
     else:
         move = minimax(board, PLAYER_O, size, win_length)[1]
     
@@ -215,10 +218,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'choose_difficulty':
         await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
-        return
-
-    if query.data == 'choose_size':
-        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
         return
 
     if query.data.startswith('size_'):
