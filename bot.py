@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name=s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -122,6 +122,8 @@ def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('
         return (best_score, best_move)
 
 def heuristic_evaluation(board, player, size, win_length):
+    """Простая эвристика, оценивающая текущее состояние доски.
+       Возвращает положительное значение для благоприятной позиции для бота и отрицательное для игрока."""
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     bot_score = 0
     player_score = 0
@@ -136,6 +138,7 @@ def heuristic_evaluation(board, player, size, win_length):
     return bot_score - player_score
 
 def score_position(board, row, col, player, size, win_length):
+    """Оценивает позицию по строкам, столбцам и диагоналям."""
     score = 0
 
     # Проверка строки
@@ -169,17 +172,10 @@ def format_keyboard(board, size):
 
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Играть с ИИ", callback_data='start_singleplayer')],
-        [InlineKeyboardButton("Мультиплеер", callback_data='start_multiplayer')],
+        [InlineKeyboardButton("Начать игру", callback_data='start_game')],
+        [InlineKeyboardButton("Мультиплеер", callback_data='multiplayer_mode')],
         [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')],
         [InlineKeyboardButton("Выбрать размер поля", callback_data='choose_size')]
-    ])
-
-def multiplayer_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Создать игру", callback_data='create_multiplayer')],
-        [InlineKeyboardButton("Присоединиться к игре", callback_data='join_multiplayer')],
-        [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
 
 def difficulty_keyboard():
@@ -203,7 +199,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Текущий размер поля: {size}x{size}\n"
         f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
-        "Нажмите кнопку ниже, чтобы выбрать режим игры.",
+        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
         reply_markup=main_menu_keyboard()
     )
 
@@ -211,179 +207,98 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     board = context.user_data.get('board')
     size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    win_length = context.user_data.get('win_length', 3)
-    difficulty = context.user_data.get('difficulty', 'ordinary')
+    win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
 
-    if query.data == 'start_singleplayer':
-        # Начало игры с ИИ
-        context.user_data['board'] = start_game(size, win_length)
-        context.user_data['turn'] = PLAYER_X
-        await query.message.edit_text(
-            "Ваш ход.",
-            reply_markup=format_keyboard(context.user_data['board'], size)
-        )
-    
-    elif query.data == 'start_multiplayer':
-        # Переход в меню мультиплеера
-        await query.message.edit_text(
-            "Выберите действие:",
-            reply_markup=multiplayer_menu_keyboard()
-        )
+    # Убедитесь, что есть ключ, указывающий на режим мультиплеера
+    is_multiplayer = context.user_data.get('is_multiplayer', False)
 
-    elif query.data == 'create_multiplayer':
-        # Создание новой мультиплеерной игры
-        code = str(uuid.uuid4())[:8]  # Генерация уникального кода
-        games[code] = {
-            'board': start_game(size, win_length),
+    await query.answer()
+
+    if query.data.isdigit() and board:
+        position = int(query.data)
+
+        if board[position] == EMPTY:
+            board[position] = PLAYER_X
+
+            # Проверка выигрыша пользователя
+            if check_win(board, PLAYER_X, size, win_length):
+                await query.edit_message_text("Вы победили!", reply_markup=format_keyboard(board, size))
+                return
+
+            # Проверка ничьи
+            if check_draw(board):
+                await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+                return
+
+            # Ход бота или второго игрока
+            if is_multiplayer:
+                # Если мультиплеерный режим, отправляем обновленный статус
+                opponent_chat_id = player_sessions[update.effective_chat.id]
+                await context.bot.send_message(
+                    chat_id=opponent_chat_id,
+                    text="Ваш ход.",
+                    reply_markup=format_keyboard(board, size)
+                )
+            else:
+                ai_move = make_ai_move(board, context.user_data.get('difficulty', 'ordinary'), size, win_length)
+                await query.edit_message_text(
+                    f"Вы сделали ход: {position + 1}\nБот сделал ход: {ai_move + 1}",
+                    reply_markup=format_keyboard(board, size)
+                )
+
+                # Проверка выигрыша бота
+                if check_win(board, PLAYER_O, size, win_length):
+                    await query.edit_message_text("Бот победил!", reply_markup=format_keyboard(board, size))
+                    return
+
+                # Проверка ничьи после хода бота
+                if check_draw(board):
+                    await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+                    return
+
+            await query.edit_message_text("Ваш ход.", reply_markup=format_keyboard(board, size))
+
+    elif query.data == 'start_game':
+        context.user_data['board'] = start_game(size)
+        context.user_data['is_multiplayer'] = False  # Локальный режим
+        await query.edit_message_text("Начнем игру!", reply_markup=format_keyboard(context.user_data['board'], size))
+
+    elif query.data == 'multiplayer_mode':
+        context.user_data['is_multiplayer'] = True
+        game_code = str(uuid.uuid4())[:8]  # Генерируем уникальный код игры
+        games[game_code] = {
+            'board': start_game(size),
             'size': size,
             'win_length': win_length,
-            'players': [query.message.chat_id],
-            'turn': PLAYER_X
+            'players': [update.effective_chat.id]
         }
-        player_sessions[query.message.chat_id] = code
-        await query.message.edit_text(
-            f"Игра создана! Ваш код: {code}. Передайте этот код своему другу, чтобы он присоединился."
-        )
+        player_sessions[update.effective_chat.id] = game_code
 
-    elif query.data == 'join_multiplayer':
-        await query.message.edit_text(
-            "Введите команду /join_game <код> для присоединения к игре."
-        )
-    
+        await query.edit_message_text(f"Код игры: {game_code}\n"
+                                      f"Поделитесь этим кодом с другом, чтобы он присоединился к игре. Используйте команду /join_game <код>.")
+
     elif query.data == 'choose_difficulty':
-        # Выбор сложности игры
-        await query.message.edit_text(
-            "Выберите сложность игры:",
-            reply_markup=difficulty_keyboard()
-        )
-    
-    elif query.data == 'choose_size':
-        # Выбор размера поля
-        await query.message.edit_text(
-            "Выберите размер поля:",
-            reply_markup=size_keyboard()
-        )
+        await query.edit_message_text("Выберите сложность:", reply_markup=difficulty_keyboard())
 
     elif query.data.startswith('difficulty_'):
-        # Установка выбранной сложности
         difficulty = query.data.split('_')[1]
         context.user_data['difficulty'] = difficulty
-        await query.message.edit_text(
-            f"Сложность установлена на: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}",
-            reply_markup=main_menu_keyboard()
-        )
+        await query.edit_message_text(f"Вы выбрали сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}")
+
+    elif query.data == 'choose_size':
+        await query.edit_message_text("Выберите размер поля:", reply_markup=size_keyboard())
 
     elif query.data.startswith('size_'):
-        # Установка выбранного размера поля
         size = int(query.data.split('_')[1])
         context.user_data['size'] = size
-        context.user_data['win_length'] = 3 if size == 3 else 4
-        await query.message.edit_text(
-            f"Размер поля установлен на: {size}x{size}",
-            reply_markup=main_menu_keyboard()
-        )
-    
-    elif board:
-        # Логика для одиночной игры
-        player_move = int(query.data)
-        if board[player_move] != EMPTY:
-            await query.answer("Эта клетка уже занята!")
-            return
+        context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации по умолчанию
+        await query.edit_message_text(f"Вы выбрали размер поля: {size}x{size}")
 
-        board[player_move] = PLAYER_X
-        if check_win(board, PLAYER_X, size, win_length):
-            await query.message.edit_text(
-                "Вы выиграли!",
-                reply_markup=format_keyboard(board, size)
-            )
-            return
-
-        if check_draw(board):
-            await query.message.edit_text(
-                "Ничья.",
-                reply_markup=format_keyboard(board, size)
-            )
-            return
-
-        ai_move = make_ai_move(board, difficulty, size, win_length)
-        if check_win(board, PLAYER_O, size, win_length):
-            await query.message.edit_text(
-                "ИИ выиграл.",
-                reply_markup=format_keyboard(board, size)
-            )
-            return
-
-        if check_draw(board):
-            await query.message.edit_text(
-                "Ничья.",
-                reply_markup=format_keyboard(board, size)
-            )
-            return
-
-        await query.message.edit_text(
-            "Ваш ход.",
-            reply_markup=format_keyboard(board, size)
-        )
-    else:
-        # Логика для мультиплеерной игры
-        player_id = query.message.chat_id
-
-        if player_id not in player_sessions:
-            await query.answer("Вы не находитесь в активной игре.")
-            return
-
-        code = player_sessions[player_id]
-        game = games[code]
-        board = game['board']
-        size = game['size']
-        win_length = game['win_length']
-        current_turn = game['turn']
-
-        if current_turn == PLAYER_X and player_id != game['players'][0]:
-            await query.answer("Сейчас ходит другой игрок.")
-            return
-        elif current_turn == PLAYER_O and player_id != game['players'][1]:
-            await query.answer("Сейчас ходит другой игрок.")
-            return
-
-        player_move = int(query.data)
-        if board[player_move] != EMPTY:
-            await query.answer("Эта клетка уже занята!")
-            return
-
-        board[player_move] = current_turn
-        game['turn'] = PLAYER_O if current_turn == PLAYER_X else PLAYER_X
-
-        if check_win(board, current_turn, size, win_length):
-            await query.message.edit_text(
-                f"Игра завершена! {'Вы' if current_turn == PLAYER_X else 'Ваш друг'} выиграли.",
-                reply_markup=format_keyboard(board, size)
-            )
-            del games[code]
-            return
-
-        if check_draw(board):
-            await query.message.edit_text(
-                "Игра завершена! Ничья.",
-                reply_markup=format_keyboard(board, size)
-            )
-            del games[code]
-            return
-
-        await query.message.edit_text(
-            "Игра продолжается...",
-            reply_markup=format_keyboard(board, size)
-        )
-
-        next_player = game['players'][0] if game['turn'] == PLAYER_X else game['players'][1]
-        await context.bot.send_message(
-            chat_id=next_player,
-            text="Ваш ход.",
-            reply_markup=format_keyboard(board, size)
-        )
+    elif query.data == 'cancel':
+        await query.edit_message_text("Действие отменено.")
 
 async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
+    if context.args:  # Получение аргументов через context.args
         code = context.args[0]
         if code in games:
             if len(games[code]['players']) < 2:
@@ -418,7 +333,7 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("join_game", join_game, pass_args=True))
+    app.add_handler(CommandHandler("join_game", join_game))
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
@@ -426,4 +341,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
+        
