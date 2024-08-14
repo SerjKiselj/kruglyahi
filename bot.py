@@ -13,8 +13,6 @@ EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
 
-# Функции для работы с игрой
-
 def start_game(size=3, win_length=3):
     return [EMPTY] * (size * size)
 
@@ -318,4 +316,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
