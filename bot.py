@@ -208,10 +208,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_code = generate_game_code()
     games[game_code] = {
-        'board': start_game(context.user_data.get('size', 3), context.user_data.get('win_length', 3)),
         'creator_id': update.message.from_user.id,
         'opponent_id': None,
-        'player_turn': True
+        'board': None,
+        'player_turn': None
     }
     context.user_data['game_code'] = game_code
     await update.message.reply_text(
