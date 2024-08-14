@@ -204,6 +204,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
     win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
 
+    # Убедитесь, что есть ключи по умолчанию
+    if 'difficulty' not in context.user_data:
+        context.user_data['difficulty'] = 'ordinary'
+    if 'size' not in context.user_data:
+        context.user_data['size'] = 3
+    if 'win_length' not in context.user_data:
+        context.user_data['win_length'] = min(size, 3)
+
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
         context.user_data['player_turn'] = True
