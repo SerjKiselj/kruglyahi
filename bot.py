@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name=s) - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -84,11 +84,11 @@ def minimax(board, player, size, win_length, alpha=float('-inf'), beta=float('in
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if check_win(board, PLAYER_X, size, win_length):
-        return (-10, None)
+        return (-10, None)  # Штраф за проигрыш
     if check_win(board, PLAYER_O, size, win_length):
-        return (10, None)
+        return (10, None)   # Награда за победу
     if check_draw(board):
-        return (0, None)
+        return (0, None)    # Ничья
 
     best_move = None
 
