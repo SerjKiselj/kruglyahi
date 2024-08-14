@@ -44,17 +44,12 @@ def check_draw(board):
 def make_ai_move(board, difficulty, size, win_length):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
-    if difficulty == 'easy':
-        if random.random() < 0.7:
-            move = block_or_win(board, PLAYER_O, size, win_length) or random.choice(empty_positions)
-        else:
-            move = random.choice(empty_positions)
-    elif difficulty == 'medium':
+    if difficulty == 'ordinary':
         if random.random() < 0.3:
             move = random.choice(empty_positions)
         else:
             move = block_or_win(board, PLAYER_O, size, win_length) or minimax(board, PLAYER_O, size, win_length)[1]
-    else:  # 'hard'
+    elif difficulty == 'impossible':
         move = minimax(board, PLAYER_O, size, win_length)[1]
     
     board[move] = PLAYER_O
@@ -180,9 +175,8 @@ def main_menu_keyboard():
 
 def difficulty_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Легкий", callback_data='difficulty_easy')],
-        [InlineKeyboardButton("Средний", callback_data='difficulty_medium')],
-        [InlineKeyboardButton("Сложный", callback_data='difficulty_hard')],
+        [InlineKeyboardButton("Обычный", callback_data='difficulty_ordinary')],
+        [InlineKeyboardButton("Невозможный", callback_data='difficulty_impossible')],
         [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
 
@@ -209,7 +203,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
         context.user_data['player_turn'] = True
-        context.user_data['difficulty'] = 'easy'
+        context.user_data['difficulty'] = 'ordinary'
 
         await query.message.edit_text(
             "Игра началась! Вы играете за 'X'.",
@@ -233,19 +227,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
         return
 
-    if query.data == 'difficulty_easy':
-        context.user_data['difficulty'] = 'easy'
-        await query.message.edit_text("Уровень сложности изменен на Легкий.", reply_markup=main_menu_keyboard())
+    if query.data == 'difficulty_ordinary':
+        context.user_data['difficulty'] = 'ordinary'
+        await query.message.edit_text("Уровень сложности изменен на Обычный.", reply_markup=main_menu_keyboard())
         return
 
-    if query.data == 'difficulty_medium':
-        context.user_data['difficulty'] = 'medium'
-        await query.message.edit_text("Уровень сложности изменен на Средний.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'difficulty_hard':
-        context.user_data['difficulty'] = 'hard'
-        await query.message.edit_text("Уровень сложности изменен на Сложный.", reply_markup=main_menu_keyboard())
+    if query.data == 'difficulty_impossible':
+        context.user_data['difficulty'] = 'impossible'
+        await query.message.edit_text("Уровень сложности изменен на Невозможный.", reply_markup=main_menu_keyboard())
         return
 
     if query.data == 'cancel':
