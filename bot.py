@@ -21,21 +21,23 @@ def generate_win_combos(size, win_length):
 
     # Горизонтальные и вертикальные
     for i in range(size):
-        combos.append([i * size + j for j in range(size)])
-        combos.append([j * size + i for j in range(size)])
+        if size >= win_length:
+            combos.append([i * size + j for j in range(win_length)])
+            combos.append([j * size + i for j in range(win_length)])
 
     # Диагонали
-    if win_length <= size:
-        combos.append([i * size + i for i in range(size)])
-        combos.append([i * size + (size - 1 - i) for i in range(size)])
+    if size >= win_length:
+        combos.append([i * size + i for i in range(win_length)])
+        combos.append([i * size + (size - 1 - i) for i in range(win_length)])
 
     return combos
 
 def check_win(board, player, size, win_length):
     combos = generate_win_combos(size, win_length)
     for combo in combos:
-        if len(combo) >= win_length and all(board[pos] == player for pos in combo):
-            return True
+        for i in range(size - win_length + 1):
+            if all(board[pos] == player for pos in combo):
+                return True
     return False
 
 def check_draw(board):
@@ -78,13 +80,12 @@ def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float(
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if check_win(board, PLAYER_X, size, win_length):
-        return (-10 + depth, None)  # Чем быстрее проигрыш, тем хуже
+        return (-10 + depth, None)
     if check_win(board, PLAYER_O, size, win_length):
-        return (10 - depth, None)   # Чем быстрее победа, тем лучше
+        return (10 - depth, None)
     if check_draw(board):
-        return (0, None)            # Ничья
+        return (0, None)
 
-    # Ограничение глубины рекурсии
     if depth == max_depth:
         return (heuristic_evaluation(board, player, size, win_length), None)
 
@@ -118,8 +119,6 @@ def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float(
         return (best_score, best_move)
 
 def heuristic_evaluation(board, player, size, win_length):
-    """Простая эвристика, оценивающая текущее состояние доски.
-       Возвращает положительное значение для благоприятной позиции для бота и отрицательное для игрока."""
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     bot_score = 0
     player_score = 0
@@ -134,25 +133,20 @@ def heuristic_evaluation(board, player, size, win_length):
     return bot_score - player_score
 
 def score_position(board, row, col, player, size, win_length):
-    """Оценивает позицию по строкам, столбцам и диагоналям."""
     score = 0
 
-    # Проверка строки
     if col <= size - win_length:
         if all(board[row * size + col + k] == player for k in range(win_length)):
             score += 1
 
-    # Проверка столбца
     if row <= size - win_length:
         if all(board[(row + k) * size + col] == player for k in range(win_length)):
             score += 1
 
-    # Проверка диагонали слева направо
     if row <= size - win_length and col <= size - win_length:
         if all(board[(row + k) * size + col + k] == player for k in range(win_length)):
             score += 1
 
-    # Проверка диагонали справа налево
     if row <= size - win_length and col >= win_length - 1:
         if all(board[(row + k) * size + col - k] == player for k in range(win_length)):
             score += 1
@@ -189,8 +183,12 @@ def size_keyboard():
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
+    difficulty = context.user_data.get('difficulty', 'ordinary')
     await update.message.reply_text(
-        "Привет! Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
+        f"Текущий размер поля: {size}x{size}\n"
+        f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
+        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
         reply_markup=main_menu_keyboard()
     )
 
@@ -200,13 +198,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
     win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
 
+    # Убедитесь, что есть ключи по умолчанию
+    if 'difficulty' not in context.user_data:
+        context.user_data['difficulty'] = 'ordinary'
+    if 'size' not in context.user_data:
+        context.user_data['size'] = 3
+    if 'win_length' not in context.user_data:
+        context.user_data['win_length'] = min(size, 3)
+
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
         context.user_data['player_turn'] = True
-        context.user_data['difficulty'] = 'ordinary'
 
         await query.message.edit_text(
-            "Игра началась! Вы играете за 'X'.",
+            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}\nСложность: {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}",
             reply_markup=format_keyboard(context.user_data['board'], size)
         )
         return
@@ -247,7 +252,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     player_move = int(query.data)
 
-    if board[player_move] != EMPTY:
+    if player_move >= len(board) or board[player_move] != EMPTY:
         await query.answer("Эта клетка уже занята!")
         return
 
@@ -309,4 +314,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
+        
