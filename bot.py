@@ -1,10 +1,10 @@
 import logging
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name%) - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -122,16 +122,10 @@ def difficulty_keyboard():
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    context.user_data['board'] = start_game()
-    context.user_data['player_turn'] = True
-    context.user_data['difficulty'] = 'easy'
-
     await update.message.reply_text(
-        "Игра началась! Вы играете за 'X'.",
-        reply_markup=format_keyboard(context.user_data['board'])
+        "Привет! Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
+        reply_markup=main_menu_keyboard()
     )
-    await update.message.reply_text("Вы можете изменить сложность игры через меню.", reply_markup=main_menu_keyboard())
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -140,6 +134,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == 'start_game':
         context.user_data['board'] = start_game()
         context.user_data['player_turn'] = True
+        context.user_data['difficulty'] = 'easy'
+
         await query.message.edit_text(
             "Игра началась! Вы играете за 'X'.",
             reply_markup=format_keyboard(context.user_data['board'])
