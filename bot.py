@@ -12,25 +12,30 @@ logger = logging.getLogger(__name__)
 EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
-WIN_COMBOS = [
-    [0, 1, 2],  # верхний ряд
-    [3, 4, 5],  # средний ряд
-    [6, 7, 8],  # нижний ряд
-    [0, 3, 6],  # первый столбец
-    [1, 4, 7],  # второй столбец
-    [2, 5, 8],  # третий столбец
-    [0, 4, 8],  # диагональ слева направо
-    [2, 4, 6],  # диагональ справа налево
-]
 
 # Функции для работы с игрой
 
 def start_game(size=3, win_length=3):
     return [EMPTY] * (size * size)
 
+def generate_win_combos(size, win_length):
+    combos = []
+
+    # Горизонтальные и вертикальные
+    for i in range(size):
+        combos.append([i * size + j for j in range(size)])
+        combos.append([j * size + i for j in range(size)])
+
+    # Диагонали
+    combos.append([i * size + i for i in range(size)])
+    combos.append([i * size + (size - 1 - i) for i in range(size)])
+
+    return combos
+
 def check_win(board, player, size, win_length):
-    for combo in WIN_COMBOS:
-        if all(board[pos] == player for pos in combo):
+    combos = generate_win_combos(size, win_length)
+    for combo in combos:
+        if len(combo) >= win_length and all(board[pos] == player for pos in combo):
             return True
     return False
 
@@ -167,7 +172,8 @@ def format_keyboard(board, size):
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Начать игру", callback_data='start_game')],
-        [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')]
+        [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')],
+        [InlineKeyboardButton("Выбрать размер поля", callback_data='choose_size')]
     ])
 
 def difficulty_keyboard():
@@ -175,6 +181,14 @@ def difficulty_keyboard():
         [InlineKeyboardButton("Легкий", callback_data='difficulty_easy')],
         [InlineKeyboardButton("Средний", callback_data='difficulty_medium')],
         [InlineKeyboardButton("Сложный", callback_data='difficulty_hard')],
+        [InlineKeyboardButton("Отмена", callback_data='cancel')]
+    ])
+
+def size_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("3x3", callback_data='size_3')],
+        [InlineKeyboardButton("4x4", callback_data='size_4')],
+        [InlineKeyboardButton("5x5", callback_data='size_5')],
         [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
 
@@ -203,6 +217,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'choose_difficulty':
         await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
+        return
+
+    if query.data == 'choose_size':
+        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
+        return
+
+    if query.data.startswith('size_'):
+        size_map = {'size_3': 3, 'size_4': 4, 'size_5': 5}
+        size = size_map.get(query.data, 3)
+        context.user_data['size'] = size
+        context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации не может быть больше размера поля
+        await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
         return
 
     if query.data == 'difficulty_easy':
