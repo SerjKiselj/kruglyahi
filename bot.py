@@ -7,6 +7,7 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
+import asyncio
 
 # Символы
 EMPTY, PLAYER_X, PLAYER_O = ' ', 'X', 'O'
@@ -125,8 +126,13 @@ async def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, move))
 
-    await app.run_polling()
+    # Запуск бота без создания нового цикла событий
+    await app.initialize()
+    await app.start()
+    print("Бот запущен. Нажмите Ctrl+C для завершения.")
+    await app.updater.start_polling()
+    await app.updater.idle()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    # Запуск main без asyncio.run
+    asyncio.get_event_loop().run_until_complete(main())
