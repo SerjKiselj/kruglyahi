@@ -207,16 +207,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    board = context.user_data.get('board')
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
+    query.answer()
 
-    # Убедитесь, что есть ключи по умолчанию
-    if 'difficulty' not in context.user_data:
-        context.user_data['difficulty'] = 'ordinary'
-
-    if 'size' not in context.user_data:
-        context.user_data['size'] = 3
+    board = context.user_data.get('board', [])
+    size = context.user_data.get('size', 3)
+    win_length = context.user_data.get('win_length', 3)
+    
+    if 'player1' not in context.user_data:
+        context.user_data['player1'] = query.from_user.id
 
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
@@ -290,12 +288,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
-
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
-
     await application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-                        
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            pass
+        else:
+            raise
+                
