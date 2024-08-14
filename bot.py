@@ -58,6 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    logger.info(f"Selected mode: {query.data}")
     mode = query.data
     if mode == "play_with_ai":
         await select_ai_difficulty(update, context)
@@ -114,8 +115,7 @@ async def create_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.reply_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
 
 async def join_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = await context.bot.send_message(chat_id=update.effective_chat.id, text="Введи код комнаты для присоединения:")
-    context.user_data['join_msg_id'] = message.message_id
+    await update.message.reply_text("Введи код комнаты для присоединения:")
 
 async def process_room_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     room_code = update.message.text.upper()
@@ -144,6 +144,7 @@ async def send_board_update(room_code, context):
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    logger.info(f"Button pressed: {query.data}")
     user_id = query.from_user.id
     room_code = context.user_data.get('room_code')
     if not room_code or room_code not in games:
@@ -206,4 +207,4 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('help', help_command))
 
     application.run_polling()
-    
+                              
