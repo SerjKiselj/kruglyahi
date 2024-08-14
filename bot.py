@@ -73,7 +73,7 @@ def block_or_win(board, player, size, win_length):
     
     return None
 
-def minimax(board, player, size, win_length, depth=0, max_depth=3, alpha=float('-inf'), beta=float('inf')):
+def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -320,4 +320,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
+                
