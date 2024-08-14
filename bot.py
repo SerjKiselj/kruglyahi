@@ -1,16 +1,15 @@
 import random
-from telegram import Update, ReplyKeyboardMarkup
+import nest_asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
-    filters,
+    CallbackQueryHandler,
     ContextTypes
 )
 import asyncio
-import nest_asyncio  # Импортируем библиотеку
 
-nest_asyncio.apply()  # Применяем патч для asyncio
+nest_asyncio.apply()  # Патч для asyncio
 
 # Символы
 EMPTY, PLAYER_X, PLAYER_O = ' ', 'X', 'O'
@@ -37,9 +36,10 @@ def check_win(board, player):
 def check_draw(board):
     return all(cell != EMPTY for cell in board)
 
-# Отображение игрового поля
-def format_board(board):
-    return "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)])
+# Форматирование клавиатуры
+def format_keyboard(board):
+    keyboard = [[InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)] for i in range(3)]
+    return InlineKeyboardMarkup(keyboard)
 
 # Ход ИИ
 def make_ai_move(board):
@@ -67,58 +67,76 @@ def make_ai_move(board):
             board[move] = PLAYER_O
             break
 
-# Старт игры
+# Обновление сообщения
+async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE, board):
+    await update.callback_query.message.edit_text(
+        "Игра в крестики-нолики\n\n" + format_board(board),
+        reply_markup=format_keyboard(board)
+    )
+
+# Отображение игрового поля
+def format_board(board):
+    return "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)])
+
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['board'] = start_game()
-    await update.message.reply_text("Игра началась! Вы играете за 'X'. Выберите клетку (1-9):")
-    await update.message.reply_text(format_board(context.user_data['board']))
+    context.user_data['player_turn'] = True
+    await update.message.reply_text(
+        "Игра началась! Вы играете за 'X'. Выберите клетку (1-9):",
+        reply_markup=format_keyboard(context.user_data['board'])
+    )
 
-# Ход игрока
-async def move(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Обработка кликов на кнопки
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     board = context.user_data.get('board')
+    
     if not board:
-        await update.message.reply_text("Начните новую игру командой /start")
-        return
-
-    try:
-        player_move = int(update.message.text) - 1
-        if board[player_move] != EMPTY:
-            await update.message.reply_text("Эта клетка уже занята!")
-            return
-    except (ValueError, IndexError):
-        await update.message.reply_text("Введите номер клетки от 1 до 9.")
+        await query.message.reply_text("Начните новую игру командой /start")
         return
     
+    player_move = int(query.data)
+
+    if board[player_move] != EMPTY:
+        await query.answer("Эта клетка уже занята!")
+        return
+    
+    if not context.user_data['player_turn']:
+        await query.answer("Сейчас ход ИИ!")
+        return
+
     board[player_move] = PLAYER_X
+    context.user_data['player_turn'] = False
 
     if check_win(board, PLAYER_X):
-        await update.message.reply_text(format_board(board))
-        await update.message.reply_text("Поздравляю, вы выиграли!")
+        await update_message(update, context, board)
+        await query.message.reply_text("Поздравляю, вы выиграли!")
         context.user_data['board'] = None
         return
     
     if check_draw(board):
-        await update.message.reply_text(format_board(board))
-        await update.message.reply_text("Ничья!")
+        await update_message(update, context, board)
+        await query.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
-    
+
     make_ai_move(board)
 
     if check_win(board, PLAYER_O):
-        await update.message.reply_text(format_board(board))
-        await update.message.reply_text("Вы проиграли!")
+        await update_message(update, context, board)
+        await query.message.reply_text("Вы проиграли!")
         context.user_data['board'] = None
         return
     
     if check_draw(board):
-        await update.message.reply_text(format_board(board))
-        await update.message.reply_text("Ничья!")
+        await update_message(update, context, board)
+        await query.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
     
-    await update.message.reply_text(format_board(board))
-    await update.message.reply_text("Ваш ход! Выберите клетку (1-9):")
+    context.user_data['player_turn'] = True
+    await update_message(update, context, board)
 
 async def main():
     # Вставьте сюда свой токен
@@ -127,12 +145,11 @@ async def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, move))
+    app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
     # Запуск бота
     await app.run_polling()
 
 if __name__ == '__main__':
-    # Запуск main без asyncio.run
     asyncio.get_event_loop().run_until_complete(main())
