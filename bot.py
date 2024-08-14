@@ -2,11 +2,11 @@ import logging
 import random
 from uuid import uuid4
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 import asyncio
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name') - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -14,7 +14,7 @@ EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
 
-# Хранилище игр
+# Хранилище игр и игроков
 games = {}
 players = {}
 
@@ -282,4 +282,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-    
+        
