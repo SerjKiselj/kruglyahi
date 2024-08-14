@@ -5,7 +5,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 import asyncio
 
 # Логи для отладки
-logging.basicConfig(format='%(asctime)s - %(name__ - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -135,7 +135,7 @@ def score_position(board, row, col, player, size, win_length):
 
 def format_keyboard(board, size):
     keyboard = [
-        [InlineKeyboardButton(board[i*size + j] or ' ', callback_data=str(i*size + j)) for j in range(size)]
+        [InlineKeyboardButton(board[i * size + j] or ' ', callback_data=str(i * size + j)) for j in range(size)]
         for i in range(size)
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -163,63 +163,87 @@ def size_keyboard():
         [InlineKeyboardButton("Отмена", callback_data='cancel')]
     ])
 
-def create_game_lobby(update, context):
-    user_id = update.message.from_user.id
-    chat_id = update.message.chat_id
-    game_id = f"{chat_id}_{user_id}"
-
-    context.user_data[game_id] = {
-        'players': [user_id],
-        'board': start_game(size=context.user_data.get('size', 3), win_length=context.user_data.get('win_length', 3)),
-        'current_turn': user_id,
-        'status': 'waiting'
-    }
-
-    return game_id
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'game_id' in context.user_data:
-        await update.message.reply_text("Вы уже находитесь в лобби.")
-        return
-
-    size = context.user_data.get('size', 3)
-    difficulty = context.user_data.get('difficulty', 'ordinary')
     await update.message.reply_text(
-        f"Текущий размер поля: {size}x{size}\n"
-        f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
-        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
+        "Добро пожаловать в Крестики-нолики!\nВыберите действие ниже:",
         reply_markup=main_menu_keyboard()
     )
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    chat_id = query.message.chat_id
+    data = query.data
 
-    if query.data == 'start_game':
-        game_id = create_game_lobby(update, context)
+    if data == 'start_game':
+        if 'game_id' in context.user_data:
+            await query.message.reply_text("Вы уже находитесь в игре.")
+            return
+        
+        size = context.user_data.get('size', 3)
+        difficulty = context.user_data.get('difficulty', 'ordinary')
+        game_id = f"{update.effective_chat.id}_{user_id}"
+        
+        context.user_data[game_id] = {
+            'players': [user_id],
+            'board': start_game(size=size, win_length=context.user_data.get('win_length', 3)),
+            'current_turn': user_id,
+            'status': 'waiting'
+        }
         context.user_data['game_id'] = game_id
 
         await query.message.edit_text(
-            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {context.user_data['size']}x{context.user_data['size']}\nСложность: {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}",
-            reply_markup=format_keyboard(context.user_data['board'], context.user_data['size'])
+            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}\nСложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}",
+            reply_markup=format_keyboard(context.user_data[game_id]['board'], size)
         )
         return
 
-    if query.data == 'invite_friend':
-        # Генерация приглашения
-        game_id = create_game_lobby(update, context)
-        invite_text = f"Игрок {update.message.from_user.full_name} пригласил вас играть в Крестики-Нолики. Присоединитесь к игре по ссылке: /join_{game_id}"
+    if data == 'choose_difficulty':
+        await query.message.edit_text("Выберите сложность:", reply_markup=difficulty_keyboard())
+        return
+
+    if data == 'choose_size':
+        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
+        return
+
+    if data == 'invite_friend':
+        if 'game_id' not in context.user_data:
+            await query.message.reply_text("Сначала начните игру.")
+            return
+
+        game_id = context.user_data['game_id']
+        invite_text = f"Игрок {update.effective_user.full_name} пригласил вас играть в Крестики-Нолики. Присоединитесь к игре по ссылке: /join_{game_id}"
         await query.message.reply_text(invite_text)
         return
 
-    if query.data.startswith('join_'):
-        game_id = query.data[len('join_'):]
+    if data.startswith('size_'):
+        size = int(data.split('_')[1])
+        context.user_data['size'] = size
+        await query.message.edit_text(
+            f"Выбран размер поля: {size}x{size}",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    if data.startswith('difficulty_'):
+        difficulty = data.split('_')[1]
+        context.user_data['difficulty'] = difficulty
+        await query.message.edit_text(
+            f"Выбрана сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    if data == 'cancel':
+        await query.message.edit_text("Выберите действие ниже:", reply_markup=main_menu_keyboard())
+        return
+
+    if data.startswith('join_'):
+        game_id = data[len('join_'):]
         if game_id in context.user_data and len(context.user_data[game_id]['players']) == 1:
             context.user_data[game_id]['players'].append(user_id)
             context.user_data[game_id]['status'] = 'playing'
             await query.message.reply_text("Вы присоединились к игре!")
-            await update.message.reply_text("Игра началась!")
+            await query.message.reply_text("Игра началась!")
             return
         else:
             await query.message.reply_text("Невозможно присоединиться к игре. Попробуйте позже.")
@@ -233,7 +257,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Начните новую игру командой /start")
         return
 
-    player_move = int(query.data)
+    player_move = int(data)
 
     if board[player_move] != EMPTY:
         await query.answer("Эта клетка уже занята!")
