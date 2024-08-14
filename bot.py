@@ -73,7 +73,9 @@ def block_or_win(board, player, size, win_length):
     
     return None
 
-def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float('-inf'), beta=float('inf')):
+def minimax(board, player, size, win_length, depth=0, max_depth=5 if size > 3 else 10, alpha=float('-inf'), beta=float('inf')):
+    logger.info(f"Minimax call at depth {depth}, size {size}, max_depth {max_depth}")
+
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -210,113 +212,66 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'size' not in context.user_data:
         context.user_data['size'] = 3
     if 'win_length' not in context.user_data:
-        context.user_data['win_length'] = min(size, 3)
+        context.user_data['win_length'] = 3
 
     if query.data == 'start_game':
         context.user_data['board'] = start_game(size, win_length)
-        context.user_data['player_turn'] = True
-
-        await query.message.edit_text(
-            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}\nСложность: {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}",
-            reply_markup=format_keyboard(context.user_data['board'], size)
-        )
-        return
-
-    if query.data == 'choose_difficulty':
-        await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
-        return
-
-    if query.data == 'choose_size':
-        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
-        return
-
-    if query.data.startswith('size_'):
-        size_map = {'size_3': 3, 'size_4': 4, 'size_5': 5}
-        size = size_map.get(query.data, 3)
-        context.user_data['size'] = size
-        context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации не может быть больше размера поля
-        await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'difficulty_ordinary':
-        context.user_data['difficulty'] = 'ordinary'
-        await query.message.edit_text("Уровень сложности изменен на Обычный.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'difficulty_impossible':
-        context.user_data['difficulty'] = 'impossible'
-        await query.message.edit_text("Уровень сложности изменен на Невозможный.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'cancel':
-        await query.message.edit_text("Отменено.", reply_markup=main_menu_keyboard())
-        return
-
-    if not board:
-        await query.message.reply_text("Начните новую игру командой /start")
-        return
-
-    player_move = int(query.data)
-
-    if board[player_move] != EMPTY:
-        await query.answer("Эта клетка уже занята!")
-        return
-
-    if not context.user_data['player_turn']:
-        await query.answer("Сейчас ход ИИ!")
-        return
-
-    board[player_move] = PLAYER_X
-    context.user_data['player_turn'] = False
-
-    if check_win(board, PLAYER_X, size, win_length):
-        await update_message(update, context)
-        await query.message.reply_text("Поздравляю, вы выиграли!")
-        context.user_data['board'] = None
-        return
-
-    if check_draw(board):
-        await update_message(update, context)
-        await query.message.reply_text("Ничья!")
-        context.user_data['board'] = None
-        return
-
-    ai_move = make_ai_move(board, context.user_data['difficulty'], size, win_length)
-
-    if check_win(board, PLAYER_O, size, win_length):
-        await update_message(update, context)
-        await query.message.reply_text("Вы проиграли!")
-        context.user_data['board'] = None
-        return
-
-    if check_draw(board):
-        await update_message(update, context)
-        await query.message.reply_text("Ничья!")
-        context.user_data['board'] = None
-        return
-
-    context.user_data['player_turn'] = True
-    await update_message(update, context)
-
-async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    board = context.user_data.get('board')
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    if board:
-        await update.callback_query.message.edit_text(
-            "Игра в крестики-нолики\n\n",
+        board = context.user_data['board']
+        await query.edit_message_text(
+            "Вы начали новую игру!",
             reply_markup=format_keyboard(board, size)
         )
+    elif query.data.startswith('difficulty_'):
+        context.user_data['difficulty'] = query.data.split('_')[1]
+        await query.answer(f"Сложность изменена на {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}")
+        await query.edit_message_text(
+            "Выберите сложность:",
+            reply_markup=difficulty_keyboard()
+        )
+    elif query.data.startswith('size_'):
+        size = int(query.data.split('_')[1])
+        context.user_data['size'] = size
+        await query.answer(f"Размер поля изменен на {size}x{size}")
+        await query.edit_message_text(
+            "Выберите размер поля:",
+            reply_markup=size_keyboard()
+        )
+    elif board and board[int(query.data)] == EMPTY:
+        board[int(query.data)] = PLAYER_X
+        if check_win(board, PLAYER_X, size, win_length):
+            await query.edit_message_text("Вы выиграли!", reply_markup=format_keyboard(board, size))
+            return
+        elif check_draw(board):
+            await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+            return
+        await query.edit_message_text("Ход бота...", reply_markup=format_keyboard(board, size))
+        
+        # Ход бота
+        ai_move = await make_ai_move_async(board, context.user_data['difficulty'], size, win_length)
+        board[ai_move] = PLAYER_O
+        if check_win(board, PLAYER_O, size, win_length):
+            await query.edit_message_text("Вы проиграли!", reply_markup=format_keyboard(board, size))
+        elif check_draw(board):
+            await query.edit_message_text("Ничья!", reply_markup=format_keyboard(board, size))
+        else:
+            await query.edit_message_text("Ваш ход:", reply_markup=format_keyboard(board, size))
 
-def main():
-    TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
+    elif query.data == 'choose_difficulty':
+        await query.edit_message_text("Выберите сложность:", reply_markup=difficulty_keyboard())
+    elif query.data == 'choose_size':
+        await query.edit_message_text("Выберите размер поля:", reply_markup=size_keyboard())
+    elif query.data == 'cancel':
+        await query.edit_message_text("Отмена. Возвращение в главное меню.", reply_markup=main_menu_keyboard())
 
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
-
-    print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    app.run_polling()
+async def make_ai_move_async(board, difficulty, size, win_length):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, make_ai_move, board, difficulty, size, win_length)
 
 if __name__ == '__main__':
-    main()
+    application = Application.builder().token('7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s').build()
+
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CallbackQueryHandler(button))
+
+    application.run_polling()
+        
