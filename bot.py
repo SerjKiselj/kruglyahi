@@ -297,6 +297,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if query.data.startswith('start_game'):
+        if not game['creator_id'] == update.message.from_user.id:
+            await query.message.answer("Только создатель игры может начать её.")
+            return
         game['board'] = start_game(context.user_data.get('size', 3), context.user_data.get('win_length', 3))
         game['player_turn'] = True
         await query.message.edit_text("Игра началась! Вы играете за 'X'.", reply_markup=format_keyboard(game['board'], context.user_data.get('size', 3)))
