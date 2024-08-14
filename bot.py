@@ -1,7 +1,7 @@
 import logging
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, ContextTypes, CommandHandler
 
 # Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -62,32 +62,66 @@ def make_ai_move(board, difficulty):
 
 def format_keyboard(board):
     keyboard = [
-        [InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)]
+        [InlineKeyboardButton(board[i*3 + j] or ' ', callback_data=str(i*3 + j)) for j in range(3)]
         for i in range(3)
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def main_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Начать игру", callback_data='start_game')],
+        [InlineKeyboardButton("Выбрать сложность", callback_data='choose_difficulty')]
+    ])
+
+def difficulty_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Легкий", callback_data='difficulty_easy')],
+        [InlineKeyboardButton("Сложный", callback_data='difficulty_hard')],
+        [InlineKeyboardButton("Отмена", callback_data='cancel')]
+    ])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
     context.user_data['board'] = start_game()
     context.user_data['player_turn'] = True
     context.user_data['difficulty'] = 'easy'
+
     await update.message.reply_text(
-        "Игра началась! Вы играете за 'X'. Выберите клетку на поле:\n\n" +
-        "Уровень сложности ИИ: Easy. Используйте команду /difficulty <easy|hard> для смены сложности.",
+        "Игра началась! Вы играете за 'X'.",
         reply_markup=format_keyboard(context.user_data['board'])
     )
-
-async def difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1 or context.args[0] not in ['easy', 'hard']:
-        await update.message.reply_text("Используйте команду /difficulty <easy|hard> для изменения уровня сложности.")
-        return
-    
-    context.user_data['difficulty'] = context.args[0]
-    await update.message.reply_text(f"Уровень сложности ИИ изменен на {context.args[0].capitalize()}.")
+    await update.message.reply_text("Вы можете изменить сложность игры через меню.", reply_markup=main_menu_keyboard())
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     board = context.user_data.get('board')
+
+    if query.data == 'start_game':
+        context.user_data['board'] = start_game()
+        context.user_data['player_turn'] = True
+        await query.message.edit_text(
+            "Игра началась! Вы играете за 'X'.",
+            reply_markup=format_keyboard(context.user_data['board'])
+        )
+        return
+
+    if query.data == 'choose_difficulty':
+        await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
+        return
+
+    if query.data == 'difficulty_easy':
+        context.user_data['difficulty'] = 'easy'
+        await query.message.edit_text("Уровень сложности изменен на Легкий.", reply_markup=main_menu_keyboard())
+        return
+
+    if query.data == 'difficulty_hard':
+        context.user_data['difficulty'] = 'hard'
+        await query.message.edit_text("Уровень сложности изменен на Сложный.", reply_markup=main_menu_keyboard())
+        return
+
+    if query.data == 'cancel':
+        await query.message.edit_text("Отменено.", reply_markup=main_menu_keyboard())
+        return
 
     if not board:
         await query.message.reply_text("Начните новую игру командой /start")
@@ -149,7 +183,6 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("difficulty", difficulty))
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
