@@ -25,8 +25,9 @@ def generate_win_combos(size, win_length):
         combos.append([j * size + i for j in range(size)])
 
     # Диагонали
-    combos.append([i * size + i for i in range(size)])
-    combos.append([i * size + (size - 1 - i) for i in range(size)])
+    if win_length <= size:
+        combos.append([i * size + i for i in range(size)])
+        combos.append([i * size + (size - 1 - i) for i in range(size)])
 
     return combos
 
@@ -218,6 +219,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'choose_difficulty':
         await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
+        return
+
+    if query.data == 'choose_size':
+        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
         return
 
     if query.data.startswith('size_'):
