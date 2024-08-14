@@ -1,58 +1,47 @@
+import logging
 import random
-import nest_asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
-)
-import asyncio
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-nest_asyncio.apply()  # Патч для asyncio
+# Логи для отладки
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Символы
-EMPTY, PLAYER_X, PLAYER_O = ' ', 'X', 'O'
-
-# Выигрышные комбинации
+# Константы
+EMPTY = ''
+PLAYER_X = 'X'
+PLAYER_O = 'O'
 WIN_COMBOS = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],  # горизонтальные линии
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],  # вертикальные линии
-    [0, 4, 8], [2, 4, 6]  # диагональные линии
+    [0, 1, 2],  # верхний ряд
+    [3, 4, 5],  # средний ряд
+    [6, 7, 8],  # нижний ряд
+    [0, 3, 6],  # первый столбец
+    [1, 4, 7],  # второй столбец
+    [2, 5, 8],  # третий столбец
+    [0, 4, 8],  # диагональ слева направо
+    [2, 4, 6],  # диагональ справа налево
 ]
 
-# Начальное состояние игры
+# Функции для работы с игрой
+
 def start_game():
     return [EMPTY] * 9
 
-# Проверка победы
 def check_win(board, player):
     for combo in WIN_COMBOS:
         if all(board[pos] == player for pos in combo):
             return True
     return False
 
-# Проверка на ничью
 def check_draw(board):
     return all(cell != EMPTY for cell in board)
 
-# Форматирование клавиатуры
-def format_keyboard(board):
-    keyboard = [
-        [InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)]
-        for i in range(3)
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-# Простая и сложная стратегии ИИ
 def make_ai_move(board, difficulty):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if difficulty == 'easy':
         move = random.choice(empty_positions)
     else:
-        # Сложная стратегия ИИ
-        # ИИ пытается выиграть или заблокировать игрока
         for move in empty_positions:
             board[move] = PLAYER_O
             if check_win(board, PLAYER_O):
@@ -71,27 +60,31 @@ def make_ai_move(board, difficulty):
     board[move] = PLAYER_O
     return move
 
-# Обновление сообщения с игровым полем
-async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    board = context.user_data.get('board')
-    if board:
-        await update.callback_query.message.edit_text(
-            "Игра в крестики-нолики\n\n",
-            reply_markup=format_keyboard(board)
-        )
+def format_keyboard(board):
+    keyboard = [
+        [InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)]
+        for i in range(3)
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['board'] = start_game()
     context.user_data['player_turn'] = True
-    context.user_data['difficulty'] = 'easy'  # Уровень сложности ИИ, по умолчанию easy
+    context.user_data['difficulty'] = 'easy'
     await update.message.reply_text(
         "Игра началась! Вы играете за 'X'. Выберите клетку на поле:\n\n" +
         "Уровень сложности ИИ: Easy. Используйте команду /difficulty <easy|hard> для смены сложности.",
         reply_markup=format_keyboard(context.user_data['board'])
     )
 
-# Обработка кликов на кнопки
+async def difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1 or context.args[0] not in ['easy', 'hard']:
+        await update.message.reply_text("Используйте команду /difficulty <easy|hard> для изменения уровня сложности.")
+        return
+    
+    context.user_data['difficulty'] = context.args[0]
+    await update.message.reply_text(f"Уровень сложности ИИ изменен на {context.args[0].capitalize()}.")
+
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     board = context.user_data.get('board')
@@ -142,17 +135,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['player_turn'] = True
     await update_message(update, context)
 
-# Команда /difficulty для изменения уровня сложности
-async def difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1 or context.args[0] not in ['easy', 'hard']:
-        await update.message.reply_text("Используйте команду /difficulty <easy|hard> для изменения уровня сложности.")
-        return
-    
-    context.user_data['difficulty'] = context.args[0]
-    await update.message.reply_text(f"Уровень сложности ИИ изменен на {context.args[0].capitalize()}.")
+async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    board = context.user_data.get('board')
+    if board:
+        await update.callback_query.message.edit_text(
+            "Игра в крестики-нолики\n\n",
+            reply_markup=format_keyboard(board)
+        )
 
 async def main():
-    # Вставьте сюда свой токен
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
     app = Application.builder().token(TOKEN).build()
@@ -162,9 +153,8 @@ async def main():
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    # Запуск бота
     await app.run_polling()
 
 if __name__ == '__main__':
-    asyncio.get_event_loop().run_until_complete(main())
-    
+    import asyncio
+    asyncio.run(main())
