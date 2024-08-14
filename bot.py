@@ -33,8 +33,10 @@ def check_win(board, player, size, win_length):
     # Проверяем диагонали
     for row in range(size - win_length + 1):
         for col in range(size - win_length + 1):
+            # Диагональ слева направо
             if all(board[(row + i) * size + col + i] == player for i in range(win_length)):
                 return True
+            # Диагональ справа налево
             if all(board[(row + i) * size + col + win_length - 1 - i] == player for i in range(win_length)):
                 return True
 
@@ -158,14 +160,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board = context.user_data.get('board')
 
     if query.data == 'start_game':
-        context.user_data['board'] = start_game(context.user_data.get('size', 3))
+        size = context.user_data.get('size', 3)
+        context.user_data['board'] = start_game(size)
         context.user_data['player_turn'] = True
         context.user_data['difficulty'] = 'easy'
-        context.user_data['win_length'] = min(3, context.user_data.get('size', 3))
+        context.user_data['win_length'] = size  # Победа при наборе ряда равного размеру поля
 
         await query.message.edit_text(
-            "Игра началась! Вы играете за 'X'.",
-            reply_markup=format_keyboard(context.user_data['board'], context.user_data['size'])
+            f"Игра началась на поле {size}x{size}! Вы играете за 'X'.",
+            reply_markup=format_keyboard(context.user_data['board'], size)
         )
         return
 
@@ -176,6 +179,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith('size_'):
         size = int(query.data.split('_')[1])
         context.user_data['size'] = size
+        context.user_data['win_length'] = size  # Обновление длины выигрышного ряда в зависимости от размера поля
         await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
         return
 
@@ -219,7 +223,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board[player_move] = PLAYER_X
     context.user_data['player_turn'] = False
 
-    if check_win(board, PLAYER_X, context.user_data['size'], context.user_data['win_length']):
+    size = context.user_data['size']
+    win_length = context.user_data['win_length']
+
+    if check_win(board, PLAYER_X, size, win_length):
         await update_message(update, context)
         await query.message.reply_text("Поздравляю, вы выиграли!")
         context.user_data['board'] = None
@@ -231,9 +238,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['board'] = None
         return
 
-    ai_move = make_ai_move(board, context.user_data['difficulty'], context.user_data['size'], context.user_data['win_length'])
+    ai_move = make_ai_move(board, context.user_data['difficulty'], size, win_length)
 
-    if check_win(board, PLAYER_O, context.user_data['size'], context.user_data['win_length']):
+    if check_win(board, PLAYER_O, size, win_length):
         await update_message(update, context)
         await query.message.reply_text("Вы проиграли!")
         context.user_data['board'] = None
@@ -250,10 +257,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board = context.user_data.get('board')
+    size = context.user_data.get('size', 3)
     if board:
         await update.callback_query.message.edit_text(
             "Игра в крестики-нолики\n\n",
-            reply_markup=format_keyboard(board, context.user_data['size'])
+            reply_markup=format_keyboard(board, size)
         )
 
 def main():
@@ -269,3 +277,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+        
