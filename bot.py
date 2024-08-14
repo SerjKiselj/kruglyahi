@@ -40,8 +40,11 @@ def make_ai_move(board, difficulty):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if difficulty == 'easy':
-        # Легкий уровень: случайный выбор
-        move = random.choice(empty_positions)
+        # Легкий уровень: случайный выбор с шансом на ошибку
+        if random.random() < 0.7:
+            move = random.choice(empty_positions)
+        else:
+            move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
     elif difficulty == 'medium':
         # Средний уровень: блокировка выигрыша и случайный выбор
         move = block_or_win(board, PLAYER_O) or random.choice(empty_positions)
@@ -70,7 +73,7 @@ def block_or_win(board, player):
     
     return None
 
-def minimax(board, player):
+def minimax(board, player, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
@@ -81,24 +84,34 @@ def minimax(board, player):
     if check_draw(board):
         return (0, None)
 
-    best_score = float('-inf') if player == PLAYER_O else float('inf')
     best_move = None
 
-    for move in empty_positions:
-        board[move] = player
-        score = minimax(board, opponent)[0]
-        board[move] = EMPTY
-
-        if player == PLAYER_O:
+    if player == PLAYER_O:
+        best_score = float('-inf')
+        for move in empty_positions:
+            board[move] = PLAYER_O
+            score = minimax(board, PLAYER_X, alpha, beta)[0]
+            board[move] = EMPTY
             if score > best_score:
                 best_score = score
                 best_move = move
-        else:
+            alpha = max(alpha, best_score)
+            if beta <= alpha:
+                break
+        return (best_score, best_move)
+    else:
+        best_score = float('inf')
+        for move in empty_positions:
+            board[move] = PLAYER_X
+            score = minimax(board, PLAYER_O, alpha, beta)[0]
+            board[move] = EMPTY
             if score < best_score:
                 best_score = score
                 best_move = move
-
-    return (best_score, best_move)
+            beta = min(beta, best_score)
+            if beta <= alpha:
+                break
+        return (best_score, best_move)
 
 def format_keyboard(board):
     keyboard = [
