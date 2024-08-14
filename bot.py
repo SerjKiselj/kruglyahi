@@ -143,7 +143,7 @@ async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=format_keyboard(board)
         )
 
-async def main():
+def main():
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
     app = Application.builder().token(TOKEN).build()
@@ -153,11 +153,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    try:
-        await app.run_polling()
-    except KeyboardInterrupt:
-        print("Бот остановлен.")
+    app.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
