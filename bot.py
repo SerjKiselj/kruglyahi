@@ -1,6 +1,12 @@
 import random
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
+)
 
 # Символы
 EMPTY, PLAYER_X, PLAYER_O = ' ', 'X', 'O'
@@ -58,72 +64,70 @@ def make_ai_move(board):
             break
 
 # Старт игры
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['board'] = start_game()
-    update.message.reply_text("Игра началась! Вы играете за 'X'. Выберите клетку (1-9):")
-    update.message.reply_text(format_board(context.user_data['board']))
+    await update.message.reply_text("Игра началась! Вы играете за 'X'. Выберите клетку (1-9):")
+    await update.message.reply_text(format_board(context.user_data['board']))
 
 # Ход игрока
-def move(update: Update, context: CallbackContext):
+async def move(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board = context.user_data.get('board')
     if not board:
-        update.message.reply_text("Начните новую игру командой /start")
+        await update.message.reply_text("Начните новую игру командой /start")
         return
 
     try:
         player_move = int(update.message.text) - 1
         if board[player_move] != EMPTY:
-            update.message.reply_text("Эта клетка уже занята!")
+            await update.message.reply_text("Эта клетка уже занята!")
             return
     except (ValueError, IndexError):
-        update.message.reply_text("Введите номер клетки от 1 до 9.")
+        await update.message.reply_text("Введите номер клетки от 1 до 9.")
         return
     
     board[player_move] = PLAYER_X
 
     if check_win(board, PLAYER_X):
-        update.message.reply_text(format_board(board))
-        update.message.reply_text("Поздравляю, вы выиграли!")
+        await update.message.reply_text(format_board(board))
+        await update.message.reply_text("Поздравляю, вы выиграли!")
         context.user_data['board'] = None
         return
     
     if check_draw(board):
-        update.message.reply_text(format_board(board))
-        update.message.reply_text("Ничья!")
+        await update.message.reply_text(format_board(board))
+        await update.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
     
     make_ai_move(board)
 
     if check_win(board, PLAYER_O):
-        update.message.reply_text(format_board(board))
-        update.message.reply_text("Вы проиграли!")
+        await update.message.reply_text(format_board(board))
+        await update.message.reply_text("Вы проиграли!")
         context.user_data['board'] = None
         return
     
     if check_draw(board):
-        update.message.reply_text(format_board(board))
-        update.message.reply_text("Ничья!")
+        await update.message.reply_text(format_board(board))
+        await update.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
     
-    update.message.reply_text(format_board(board))
-    update.message.reply_text("Ваш ход! Выберите клетку (1-9):")
+    await update.message.reply_text(format_board(board))
+    await update.message.reply_text("Ваш ход! Выберите клетку (1-9):")
 
-def main():
+async def main():
     # Вставьте сюда свой токен
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
-    updater = Updater(TOKEN, use_context=True)
+    app = Application.builder().token(TOKEN).build()
 
-    dp = updater.dispatcher
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, move))
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, move))
-
-    updater.start_polling()
-
-    updater.idle()
+    await app.start_polling()
+    await app.idle()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
