@@ -289,7 +289,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith('difficulty_'):
         difficulty = data.split('_')[1]
         context.user_data['difficulty'] = difficulty
-        await query.edit_message_text(f"Вы выбрали сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}")
+        await query.edit_message_text(f"Вы выбрали сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}", reply_markup=main_menu_keyboard())
 
     elif data == 'choose_size':
         await query.edit_message_text("Выберите размер поля:", reply_markup=size_keyboard())
@@ -298,10 +298,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         size = int(data.split('_')[1])
         context.user_data['size'] = size
         context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации по умолчанию
-        await query.edit_message_text(f"Вы выбрали размер поля: {size}x{size}")
+        await query.edit_message_text(f"Вы выбрали размер поля: {size}x{size}", reply_markup=main_menu_keyboard())
 
     elif data == 'cancel':
-        await query.edit_message_text("Действие отменено.")
+        await query.edit_message_text("Действие отменено.", reply_markup=main_menu_keyboard())
 
 async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
@@ -347,4 +347,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
+                    
