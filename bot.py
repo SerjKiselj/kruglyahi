@@ -1,7 +1,8 @@
 import logging
-import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+import random
+import string
 
 # Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -12,31 +13,30 @@ EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
 
-# Глобальное хранилище для активных игр
-active_games = {}
+games = {}
 
-def start_game(size=3, win_length=3):
+def generate_room_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def start_game(size=3):
     return [EMPTY] * (size * size)
 
-def generate_win_combos(size, win_length):
+def generate_win_combos(size):
     combos = []
 
-    # Горизонтальные и вертикальные
     for i in range(size):
         combos.append([i * size + j for j in range(size)])
         combos.append([j * size + i for j in range(size)])
 
-    # Диагонали
-    if win_length <= size:
-        combos.append([i * size + i for i in range(size)])
-        combos.append([i * size + (size - 1 - i) for i in range(size)])
+    combos.append([i * size + i for i in range(size)])
+    combos.append([i * size + (size - 1 - i) for i in range(size)])
 
     return combos
 
-def check_win(board, player, size, win_length):
-    combos = generate_win_combos(size, win_length)
+def check_win(board, player, size):
+    combos = generate_win_combos(size)
     for combo in combos:
-        if len(combo) >= win_length and all(board[pos] == player for pos in combo):
+        if all(board[pos] == player for pos in combo):
             return True
     return False
 
@@ -50,124 +50,110 @@ def format_keyboard(board, size):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def main_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Начать игру с ИИ", callback_data='start_game_ai')],
-        [InlineKeyboardButton("Начать игру с другом", callback_data='start_game_friend')],
-        [InlineKeyboardButton("Выбрать размер поля", callback_data='choose_size')]
-    ])
-
-def size_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("3x3", callback_data='size_3')],
-        [InlineKeyboardButton("4x4", callback_data='size_4')],
-        [InlineKeyboardButton("5x5", callback_data='size_5')],
-        [InlineKeyboardButton("Отмена", callback_data='cancel')]
-    ])
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    await update.message.reply_text(
-        f"Текущий размер поля: {size}x{size}\n"
-        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
-        reply_markup=main_menu_keyboard()
-    )
+    await update.message.reply_text("Привет! Хочешь сыграть в крестики-нолики? Отправь команду /create чтобы создать комнату или /join <код> чтобы присоединиться.")
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    board = context.user_data.get('board')
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
+async def create_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    room_code = generate_room_code()
+    context.user_data['room_code'] = room_code
+    games[room_code] = {
+        'board': start_game(),
+        'players': [update.message.from_user.id],
+        'turn': PLAYER_X,
+        'size': 3
+    }
+    await update.message.reply_text(f"Комната создана! Код комнаты: {room_code}. Передай его другу, чтобы он присоединился.")
 
-    if query.data == 'start_game_ai':
-        context.user_data['board'] = start_game(size, win_length)
-        context.user_data['player_turn'] = True
-
-        await query.message.edit_text(
-            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}",
-            reply_markup=format_keyboard(context.user_data['board'], size)
-        )
+async def join_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) == 0:
+        await update.message.reply_text("Пожалуйста, укажи код комнаты для присоединения: /join <код>")
         return
 
-    if query.data == 'start_game_friend':
-        context.user_data['board'] = start_game(size, win_length)
-        context.user_data['player_turn'] = True
-        context.user_data['opponent_id'] = None  # Идентификатор противника будет назначен позже
-
-        await query.message.edit_text(
-            f"Игра началась! Вы играете за 'X'.\nРазмер поля: {size}x{size}",
-            reply_markup=format_keyboard(context.user_data['board'], size)
-        )
+    room_code = context.args[0].upper()
+    if room_code not in games:
+        await update.message.reply_text("Комната с таким кодом не найдена.")
         return
 
-    if query.data.startswith('size_'):
-        size_map = {'size_3': 3, 'size_4': 4, 'size_5': 5}
-        size = size_map.get(query.data, 3)
-        context.user_data['size'] = size
-        context.user_data['win_length'] = min(size, 3)  # Длина победной комбинации не может быть больше размера поля
-        await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
+    game = games[room_code]
+    if len(game['players']) >= 2:
+        await update.message.reply_text("В этой комнате уже играют два игрока.")
         return
 
-    if query.data == 'cancel':
-        await query.message.edit_text("Отменено.", reply_markup=main_menu_keyboard())
-        return
+    game['players'].append(update.message.from_user.id)
+    context.user_data['room_code'] = room_code
+    await update.message.reply_text("Ты присоединился к игре! Ожидай своего хода.")
+    await send_board_update(room_code, context)
 
-    if not board:
-        await query.message.reply_text("Начните новую игру командой /start")
-        return
+async def send_board_update(room_code, context):
+    game = games[room_code]
+    board = game['board']
+    size = game['size']
 
-    player_move = int(query.data)
-
-    if board[player_move] != EMPTY:
-        await query.answer("Эта клетка уже занята!")
-        return
-
-    if not context.user_data['player_turn']:
-        await query.answer("Сейчас ход вашего противника!")
-        return
-
-    board[player_move] = PLAYER_X if context.user_data['player_turn'] else PLAYER_O
-    context.user_data['player_turn'] = not context.user_data['player_turn']
-
-    # Проверяем победу
-    if check_win(board, PLAYER_X, size, win_length):
-        await update_message(update, context)
-        await query.message.reply_text("Поздравляю, X выиграли!")
-        context.user_data['board'] = None
-        return
-    elif check_win(board, PLAYER_O, size, win_length):
-        await update_message(update, context)
-        await query.message.reply_text("Поздравляю, O выиграли!")
-        context.user_data['board'] = None
-        return
-    elif check_draw(board):
-        await update_message(update, context)
-        await query.message.reply_text("Ничья!")
-        context.user_data['board'] = None
-        return
-
-    await update_message(update, context)
-
-async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    board = context.user_data.get('board')
-    size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
-    if board:
-        await update.callback_query.message.edit_text(
-            "Игра в крестики-нолики\n\n",
+    for player_id in game['players']:
+        await context.bot.send_message(
+            chat_id=player_id,
+            text=f"Ход {'X' if game['turn'] == PLAYER_X else 'O'}:",
             reply_markup=format_keyboard(board, size)
         )
 
-def main():
-    TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
 
-    app = Application.builder().token(TOKEN).build()
+    room_code = context.user_data.get('room_code')
+    if not room_code or room_code not in games:
+        await query.answer("Комната не найдена.")
+        return
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
+    game = games[room_code]
+    if user_id not in game['players']:
+        await query.answer("Ты не участвуешь в этой игре.")
+        return
 
-    print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    app.run_polling()
+    if game['turn'] == PLAYER_X and game['players'][0] != user_id:
+        await query.answer("Сейчас ходит другой игрок.")
+        return
+
+    if game['turn'] == PLAYER_O and game['players'][1] != user_id:
+        await query.answer("Сейчас ходит другой игрок.")
+        return
+
+    board = game['board']
+    size = game['size']
+    move = int(query.data)
+
+    if board[move] != EMPTY:
+        await query.answer("Это место уже занято.")
+        return
+
+    board[move] = game['turn']
+    if check_win(board, game['turn'], size):
+        await query.edit_message_text(f"Игрок {game['turn']} выиграл!", reply_markup=None)
+        await end_game(room_code)
+        return
+
+    if check_draw(board):
+        await query.edit_message_text("Ничья!", reply_markup=None)
+        await end_game(room_code)
+        return
+
+    game['turn'] = PLAYER_O if game['turn'] == PLAYER_X else PLAYER_X
+    await send_board_update(room_code, context)
+
+async def end_game(room_code):
+    if room_code in games:
+        del games[room_code]
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Используйте команду /start для начала игры.")
 
 if __name__ == '__main__':
-    main()
+    application = Application.builder().token('7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s').build()
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('create', create_room))
+    application.add_handler(CommandHandler('join', join_room))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CommandHandler('help', help_command))
+
+    application.run_polling()
     
