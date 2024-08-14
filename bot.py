@@ -83,7 +83,7 @@ def minimax(board, player, size, win_length, depth=0, max_depth=10, alpha=float(
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
 
     if check_win(board, PLAYER_X, size, win_length):
-        return (-10 + depth, None)  # Чем быстрее победа, тем лучше
+        return (-10 + depth, None)  # Чем быстрее проигрыш, тем хуже
     if check_win(board, PLAYER_O, size, win_length):
         return (10 - depth, None)   # Чем быстрее победа, тем лучше
     if check_draw(board):
@@ -320,4 +320,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
