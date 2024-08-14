@@ -44,31 +44,32 @@ def format_keyboard(board):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# Ход ИИ
-def make_ai_move(board):
-    # ИИ пытается сначала выиграть
-    for move in range(9):
-        if board[move] == EMPTY:
+# Простая и сложная стратегии ИИ
+def make_ai_move(board, difficulty):
+    empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
+
+    if difficulty == 'easy':
+        move = random.choice(empty_positions)
+    else:
+        # Сложная стратегия ИИ
+        # ИИ пытается выиграть или заблокировать игрока
+        for move in empty_positions:
             board[move] = PLAYER_O
             if check_win(board, PLAYER_O):
-                return
+                return move
             board[move] = EMPTY
-    
-    # Если выиграть не получилось, пытается блокировать игрока
-    for move in range(9):
-        if board[move] == EMPTY:
+        
+        for move in empty_positions:
             board[move] = PLAYER_X
             if check_win(board, PLAYER_X):
                 board[move] = PLAYER_O
-                return
+                return move
             board[move] = EMPTY
+
+        move = random.choice(empty_positions)
     
-    # Если и блокировать не надо, выбирает случайный ход
-    while True:
-        move = random.randint(0, 8)
-        if board[move] == EMPTY:
-            board[move] = PLAYER_O
-            break
+    board[move] = PLAYER_O
+    return move
 
 # Обновление сообщения с игровым полем
 async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,8 +84,10 @@ async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['board'] = start_game()
     context.user_data['player_turn'] = True
+    context.user_data['difficulty'] = 'easy'  # Уровень сложности ИИ, по умолчанию easy
     await update.message.reply_text(
-        "Игра началась! Вы играете за 'X'. Выберите клетку на поле:",
+        "Игра началась! Вы играете за 'X'. Выберите клетку на поле:\n\n" +
+        "Уровень сложности ИИ: Easy. Используйте команду /difficulty <easy|hard> для смены сложности.",
         reply_markup=format_keyboard(context.user_data['board'])
     )
 
@@ -122,7 +125,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['board'] = None
         return
 
-    make_ai_move(board)
+    ai_move = make_ai_move(board, context.user_data['difficulty'])
 
     if check_win(board, PLAYER_O):
         await update_message(update, context)
@@ -139,6 +142,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['player_turn'] = True
     await update_message(update, context)
 
+# Команда /difficulty для изменения уровня сложности
+async def difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1 or context.args[0] not in ['easy', 'hard']:
+        await update.message.reply_text("Используйте команду /difficulty <easy|hard> для изменения уровня сложности.")
+        return
+    
+    context.user_data['difficulty'] = context.args[0]
+    await update.message.reply_text(f"Уровень сложности ИИ изменен на {context.args[0].capitalize()}.")
+
 async def main():
     # Вставьте сюда свой токен
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
@@ -146,6 +158,7 @@ async def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("difficulty", difficulty))
     app.add_handler(CallbackQueryHandler(button))
 
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
@@ -154,3 +167,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())
+    
