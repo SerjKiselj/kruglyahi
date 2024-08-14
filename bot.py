@@ -8,6 +8,9 @@ from telegram.ext import (
     ContextTypes
 )
 import asyncio
+import nest_asyncio  # Импортируем библиотеку
+
+nest_asyncio.apply()  # Применяем патч для asyncio
 
 # Символы
 EMPTY, PLAYER_X, PLAYER_O = ' ', 'X', 'O'
