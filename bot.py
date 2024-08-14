@@ -203,7 +203,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    board = context.user_data.get('board')
+    query.answer()
+
     size = context.user_data.get('size', 3)  # Размер поля по умолчанию 3x3
     win_length = context.user_data.get('win_length', 3)  # Длина победной комбинации по умолчанию 3
 
@@ -295,10 +296,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del games[query.from_user.id]
         return
 
+    # Сделать ход ИИ
     if game['opponent']:
         opponent_game = games.get(game['opponent'])
         if opponent_game:
             opponent_move = make_ai_move(opponent_game['board'], game['difficulty'], size, win_length)
+            opponent_game['board'][opponent_move] = PLAYER_O
+
             if check_win(opponent_game['board'], PLAYER_O, size, win_length):
                 await update_message(update, context)
                 await query.message.reply_text("Вы проиграли!")
