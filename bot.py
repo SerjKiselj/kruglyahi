@@ -38,7 +38,10 @@ def check_draw(board):
 
 # Форматирование клавиатуры
 def format_keyboard(board):
-    keyboard = [[InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)] for i in range(3)]
+    keyboard = [
+        [InlineKeyboardButton(board[i*3 + j] or str(i*3 + j + 1), callback_data=str(i*3 + j)) for j in range(3)]
+        for i in range(3)
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 # Ход ИИ
@@ -67,23 +70,21 @@ def make_ai_move(board):
             board[move] = PLAYER_O
             break
 
-# Обновление сообщения
-async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE, board):
-    await update.callback_query.message.edit_text(
-        "Игра в крестики-нолики\n\n" + format_board(board),
-        reply_markup=format_keyboard(board)
-    )
-
-# Отображение игрового поля
-def format_board(board):
-    return "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)])
+# Обновление сообщения с игровым полем
+async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    board = context.user_data.get('board')
+    if board:
+        await update.callback_query.message.edit_text(
+            "Игра в крестики-нолики\n\n",
+            reply_markup=format_keyboard(board)
+        )
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['board'] = start_game()
     context.user_data['player_turn'] = True
     await update.message.reply_text(
-        "Игра началась! Вы играете за 'X'. Выберите клетку (1-9):",
+        "Игра началась! Вы играете за 'X'. Выберите клетку на поле:",
         reply_markup=format_keyboard(context.user_data['board'])
     )
 
@@ -91,17 +92,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     board = context.user_data.get('board')
-    
+
     if not board:
         await query.message.reply_text("Начните новую игру командой /start")
         return
-    
+
     player_move = int(query.data)
 
     if board[player_move] != EMPTY:
         await query.answer("Эта клетка уже занята!")
         return
-    
+
     if not context.user_data['player_turn']:
         await query.answer("Сейчас ход ИИ!")
         return
@@ -110,13 +111,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['player_turn'] = False
 
     if check_win(board, PLAYER_X):
-        await update_message(update, context, board)
+        await update_message(update, context)
         await query.message.reply_text("Поздравляю, вы выиграли!")
         context.user_data['board'] = None
         return
-    
+
     if check_draw(board):
-        await update_message(update, context, board)
+        await update_message(update, context)
         await query.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
@@ -124,19 +125,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     make_ai_move(board)
 
     if check_win(board, PLAYER_O):
-        await update_message(update, context, board)
+        await update_message(update, context)
         await query.message.reply_text("Вы проиграли!")
         context.user_data['board'] = None
         return
-    
+
     if check_draw(board):
-        await update_message(update, context, board)
+        await update_message(update, context)
         await query.message.reply_text("Ничья!")
         context.user_data['board'] = None
         return
-    
+
     context.user_data['player_turn'] = True
-    await update_message(update, context, board)
+    await update_message(update, context)
 
 async def main():
     # Вставьте сюда свой токен
