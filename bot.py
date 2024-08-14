@@ -126,12 +126,9 @@ async def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, move))
 
-    # Запуск бота без создания нового цикла событий
-    await app.initialize()
-    await app.start()
     print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    await app.updater.start_polling()
-    await app.updater.idle()
+    # Запуск бота
+    await app.run_polling()
 
 if __name__ == '__main__':
     # Запуск main без asyncio.run
