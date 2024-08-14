@@ -1,7 +1,8 @@
 import logging
 import random
 from uuid import uuid4
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 import asyncio
 
@@ -200,17 +201,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
         return
 
-    if query.data.startswith('difficulty_'):
-        context.user_data['difficulty'] = 'ordinary' if query.data == 'difficulty_ordinary' else 'impossible'
-        await query.message.reply_text(f"Сложность установлена на {'Обычный' if context.user_data['difficulty'] == 'ordinary' else 'Невозможный'}")
-        return
-
-    if query.data.startswith('size_'):
-        context.user_data['size'] = int(query.data.split('_')[1])
-        context.user_data['win_length'] = context.user_data['size']
-        await query.message.reply_text(f"Размер поля установлен на {context.user_data['size']}x{context.user_data['size']}")
-        return
-
     if query.data == 'new_game':
         user_id = update.effective_user.id
         game_id = str(uuid4())
@@ -406,4 +396,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
+            
