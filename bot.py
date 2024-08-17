@@ -189,18 +189,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             if 'player2' not in games:
                 games['player2'] = {'board': start_game(size, win_length), 'size': size, 'win_length': win_length, 'current_player': PLAYER_O}
-                await query.message.edit_text("Вы присоединились к игре как игрок 2.", reply_markup=format_keyboard(games['player1']['board'], size))
-                await query.message.reply_text("Игра началась! Вы играете за 'O'.")
-            else:
-                await query.message.edit_text("Игра уже в процессе.")
+            await query.message.edit_text("Игра началась! Вы играете за 'O'.", reply_markup=format_keyboard(games['player2']['board'], size))
         return
 
     if query.data == 'choose_difficulty':
-        await query.message.edit_text("Выберите уровень сложности:", reply_markup=difficulty_keyboard())
-        return
-
-    if query.data == 'choose_size':
-        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
+        await query.message.edit_text("Выберите сложность:", reply_markup=difficulty_keyboard())
         return
 
     if query.data.startswith('difficulty_'):
@@ -208,6 +201,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in games:
             games[user_id]['difficulty'] = difficulty
             await query.message.edit_text(f"Сложность игры установлена на {difficulty}.", reply_markup=main_menu_keyboard())
+        return
+
+    if query.data == 'choose_size':
+        await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
         return
 
     if query.data.startswith('size_'):
@@ -263,10 +260,5 @@ async def main():
     await application.run_polling()
 
 if __name__ == '__main__':
-    try:
-        asyncio.get_event_loop().run_until_complete(main())
-    except RuntimeError as e:
-        if str(e) == 'This event loop is already running':
-            asyncio.get_event_loop().create_task(main())
-        else:
-            raise e
+    asyncio.run(main())
+            
