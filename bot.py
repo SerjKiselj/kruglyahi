@@ -2,6 +2,7 @@ import logging
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+import asyncio
 
 # Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -12,7 +13,7 @@ EMPTY = ''
 PLAYER_X = 'X'
 PLAYER_O = 'O'
 
-# Глобальный словарь для хранения состояния игр
+# Глобальное хранилище игр
 games = {}
 
 def start_game(size=3, win_length=3):
@@ -20,17 +21,12 @@ def start_game(size=3, win_length=3):
 
 def generate_win_combos(size, win_length):
     combos = []
-
-    # Горизонтальные и вертикальные
     for i in range(size):
         combos.append([i * size + j for j in range(size)])
         combos.append([j * size + i for j in range(size)])
-
-    # Диагонали
     if win_length <= size:
         combos.append([i * size + i for i in range(size)])
         combos.append([i * size + (size - 1 - i) for i in range(size)])
-
     return combos
 
 def check_win(board, player, size, win_length):
@@ -45,7 +41,6 @@ def check_draw(board):
 
 def make_ai_move(board, difficulty, size, win_length):
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
-
     if difficulty == 'ordinary':
         if random.random() < 0.3:
             move = random.choice(empty_positions)
@@ -53,7 +48,6 @@ def make_ai_move(board, difficulty, size, win_length):
             move = block_or_win(board, PLAYER_O, size, win_length) or minimax(board, PLAYER_O, size, win_length)[1]
     elif difficulty == 'impossible':
         move = minimax(board, PLAYER_O, size, win_length)[1]
-    
     board[move] = PLAYER_O
     return move
 
@@ -65,33 +59,26 @@ def block_or_win(board, player, size, win_length):
             board[move] = EMPTY
             return move
         board[move] = EMPTY
-    
     for move in [i for i, cell in enumerate(board) if cell == EMPTY]:
         board[move] = opponent
         if check_win(board, opponent, size, win_length):
             board[move] = EMPTY
             return move
         board[move] = EMPTY
-    
     return None
 
 def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('-inf'), beta=float('inf')):
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     empty_positions = [i for i, cell in enumerate(board) if cell == EMPTY]
-
     if check_win(board, PLAYER_X, size, win_length):
-        return (-10 + depth, None)  # Чем быстрее проигрыш, тем хуже
+        return (-10 + depth, None)
     if check_win(board, PLAYER_O, size, win_length):
-        return (10 - depth, None)   # Чем быстрее победа, тем лучше
+        return (10 - depth, None)
     if check_draw(board):
-        return (0, None)            # Ничья
-
-    # Ограничение глубины рекурсии
+        return (0, None)
     if depth == max_depth or not empty_positions:
         return (heuristic_evaluation(board, player, size, win_length), None)
-
     best_move = None
-
     if player == PLAYER_O:
         best_score = float('-inf')
         for move in empty_positions:
@@ -120,45 +107,31 @@ def minimax(board, player, size, win_length, depth=0, max_depth=5, alpha=float('
         return (best_score, best_move)
 
 def heuristic_evaluation(board, player, size, win_length):
-    """Простая эвристика, оценивающая текущее состояние доски.
-       Возвращает положительное значение для благоприятной позиции для бота и отрицательное для игрока."""
     opponent = PLAYER_X if player == PLAYER_O else PLAYER_O
     bot_score = 0
     player_score = 0
-
     for i in range(size):
         for j in range(size):
             if board[i * size + j] == player:
                 bot_score += score_position(board, i, j, player, size, win_length)
             elif board[i * size + j] == opponent:
                 player_score += score_position(board, i, j, opponent, size, win_length)
-
     return bot_score - player_score
 
 def score_position(board, row, col, player, size, win_length):
-    """Оценивает позицию по строкам, столбцам и диагоналям."""
     score = 0
-
-    # Проверка строки
     if col <= size - win_length:
         if all(board[row * size + col + k] == player for k in range(win_length)):
             score += 1
-
-    # Проверка столбца
     if row <= size - win_length:
         if all(board[(row + k) * size + col] == player for k in range(win_length)):
             score += 1
-
-    # Проверка диагонали слева направо
     if row <= size - win_length and col <= size - win_length:
         if all(board[(row + k) * size + col + k] == player for k in range(win_length)):
             score += 1
-
-    # Проверка диагонали справа налево
     if row <= size - win_length and col >= win_length - 1:
         if all(board[(row + k) * size + col - k] == player for k in range(win_length)):
             score += 1
-
     return score
 
 def format_keyboard(board, size):
@@ -192,19 +165,14 @@ def size_keyboard():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-
     if user_id not in games:
         games[user_id] = {'size': 3, 'win_length': 3, 'difficulty': 'ordinary'}
-
-    size = games[user_id].get('size', 3)
-    difficulty = games[user_id].get('difficulty', 'ordinary')
-
-    await update.message.reply_text(
-        f"Текущий размер поля: {size}x{size}\n"
-        f"Текущая сложность: {'Обычный' if difficulty == 'ordinary' else 'Невозможный'}\n"
-        "Нажмите кнопку ниже, чтобы начать игру в крестики-нолики.",
-        reply_markup=main_menu_keyboard()
-    )
+        await update.message.reply_text(
+            "Вы выбрали одиночную игру. Нажмите кнопку ниже, чтобы начать.",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text("Вы уже играете!")
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -212,7 +180,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board = games.get(user_id, {}).get('board')
     size = games.get(user_id, {}).get('size', 3)
     win_length = games.get(user_id, {}).get('win_length', 3)
-    current_player = games.get(user_id, {}).get('current_player')
+    current_player = games.get(user_id, {}).get('current_player', PLAYER_X)
 
     if query.data == 'start_game':
         if 'player1' not in games:
@@ -235,87 +203,56 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Выберите размер поля:", reply_markup=size_keyboard())
         return
 
+    if query.data.startswith('difficulty_'):
+        difficulty = query.data.split('_')[1]
+        if user_id in games:
+            games[user_id]['difficulty'] = difficulty
+            await query.message.edit_text(f"Сложность игры установлена на {difficulty}.", reply_markup=main_menu_keyboard())
+        return
+
     if query.data.startswith('size_'):
-        size_map = {'size_3': 3, 'size_4': 4, 'size_5': 5}
-        size = size_map.get(query.data, 3)
-        win_length = min(size, 3)
-        if 'player1' in games:
-            games['player1']['size'] = size
-            games['player1']['win_length'] = win_length
-        if 'player2' in games:
-            games['player2']['size'] = size
-            games['player2']['win_length'] = win_length
-        await query.message.edit_text(f"Размер поля изменен на {size}x{size}.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'difficulty_ordinary':
-        if 'player1' in games:
-            games['player1']['difficulty'] = 'ordinary'
-        if 'player2' in games:
-            games['player2']['difficulty'] = 'ordinary'
-        await query.message.edit_text("Уровень сложности изменен на Обычный.", reply_markup=main_menu_keyboard())
-        return
-
-    if query.data == 'difficulty_impossible':
-        if 'player1' in games:
-            games['player1']['difficulty'] = 'impossible'
-        if 'player2' in games:
-            games['player2']['difficulty'] = 'impossible'
-        await query.message.edit_text("Уровень сложности изменен на Невозможный.", reply_markup=main_menu_keyboard())
+        size = int(query.data.split('_')[1])
+        if user_id in games:
+            games[user_id]['size'] = size
+            games[user_id]['win_length'] = min(size, games[user_id]['win_length'])
+            await query.message.edit_text(f"Размер поля установлен на {size}x{size}.", reply_markup=main_menu_keyboard())
         return
 
     if query.data == 'cancel':
-        await query.message.edit_text("Отменено.", reply_markup=main_menu_keyboard())
+        await query.message.edit_text("Операция отменена.", reply_markup=main_menu_keyboard())
         return
 
-    if not board:
-        await query.message.reply_text("Начните новую игру командой /start")
+    if board is None:
+        await query.message.reply_text("Игра еще не началась. Нажмите 'Начать игру' для начала.")
         return
 
-    player_move = int(query.data)
-
-    if board[player_move] != EMPTY:
-        await query.answer("Эта клетка уже занята!")
+    move = int(query.data)
+    if board[move] != EMPTY:
+        await query.message.reply_text("Эта клетка уже занята!")
         return
 
-    if current_player == PLAYER_X and user_id in games:
-        games[user_id]['board'][player_move] = PLAYER_X
-        games[user_id]['current_player'] = PLAYER_O
-        other_player = 'player2' if user_id == 'player1' else 'player1'
-        if check_win(board, PLAYER_X, size, win_length):
-            await update_message(update, context)
-            await query.message.reply_text("Поздравляю, вы выиграли!")
-            games.clear()  # Очищаем игры после окончания
-            return
-        if check_draw(board):
-            await update_message(update, context)
-            await query.message.reply_text("Ничья!")
-            games.clear()
-            return
-        if 'player2' in games:
-            # Ход ИИ для второго игрока
-            ai_move = make_ai_move(board, games['player2'].get('difficulty', 'ordinary'), size, win_length)
-            if check_win(board, PLAYER_O, size, win_length):
-                await update_message(update, context)
-                await query.message.reply_text("Вы проиграли!")
-                games.clear()
-                return
-            if check_draw(board):
-                await update_message(update, context)
-                await query.message.reply_text("Ничья!")
-                games.clear()
-                return
-        await update_message(update, context)
+    if current_player != PLAYER_X:
+        await query.message.reply_text("Сейчас ход другого игрока!")
         return
 
-    await query.answer("Сейчас ход другого игрока!")
+    board[move] = PLAYER_X
+    if check_win(board, PLAYER_X, size, win_length):
+        await query.message.edit_text("Вы выиграли!", reply_markup=None)
+        return
+    if check_draw(board):
+        await query.message.edit_text("Ничья!", reply_markup=None)
+        return
 
-async def update_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    size = games.get(user_id, {}).get('size', 3)
-    board = games.get(user_id, {}).get('board', start_game(size))
-    await query.message.edit_text("Ваш ход:", reply_markup=format_keyboard(board, size))
+    ai_move = make_ai_move(board, games[user_id]['difficulty'], size, win_length)
+    if check_win(board, PLAYER_O, size, win_length):
+        await query.message.edit_text("AI выиграл!", reply_markup=None)
+        return
+    if check_draw(board):
+        await query.message.edit_text("Ничья!", reply_markup=None)
+        return
+
+    await query.message.edit_text("Ход AI:", reply_markup=format_keyboard(board, size))
+    games[user_id]['current_player'] = PLAYER_X
 
 async def main():
     application = Application.builder().token("7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s").build()
@@ -326,5 +263,10 @@ async def main():
     await application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    try:
+        asyncio.get_event_loop().run_until_complete(main())
+    except RuntimeError as e:
+        if str(e) == 'This event loop is already running':
+            asyncio.get_event_loop().create_task(main())
+        else:
+            raise e
