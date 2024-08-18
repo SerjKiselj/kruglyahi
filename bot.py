@@ -14,13 +14,13 @@ PLAYER_O = 'O'
 # Хранилище игр
 games = {}
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text(
         "Привет! Используйте команду /create_game, чтобы создать новую игру.\n"
         "Используйте команду /join_game <код_игры>, чтобы присоединиться к существующей игре."
     )
 
-def create_game(update: Update, context: CallbackContext) -> None:
+async def create_game(update: Update, context: CallbackContext) -> None:
     game_id = str(update.message.chat_id)
     games[game_id] = {
         'board': [EMPTY] * 9,
@@ -28,26 +28,30 @@ def create_game(update: Update, context: CallbackContext) -> None:
         'turn': PLAYER_X,
         'status': 'waiting'
     }
-    update.message.reply_text(f"Игра создана! Ваш код игры: {game_id}. Передайте этот код другому игроку, чтобы присоединиться.")
+    await update.message.reply_text(f"Игра создана! Ваш код игры: {game_id}. Передайте этот код другому игроку, чтобы присоединиться.")
     
-def join_game(update: Update, context: CallbackContext) -> None:
+async def join_game(update: Update, context: CallbackContext) -> None:
+    if not context.args:
+        await update.message.reply_text("Пожалуйста, укажите код игры.")
+        return
+    
     game_id = context.args[0]
     if game_id not in games:
-        update.message.reply_text("Игра с таким кодом не найдена.")
+        await update.message.reply_text("Игра с таким кодом не найдена.")
         return
     
     game = games[game_id]
     
     if len(game['players']) >= 2:
-        update.message.reply_text("Игра уже заполнена.")
+        await update.message.reply_text("Игра уже заполнена.")
         return
     
     game['players'].append(update.message.chat_id)
     game['status'] = 'ongoing'
-    update.message.reply_text("Вы присоединились к игре! Ваш ход.")
+    await update.message.reply_text("Вы присоединились к игре! Ваш ход.")
     
     # Отправляем поле
-    update.message.reply_text(
+    await update.message.reply_text(
         f"Игра началась! Ваш ход. Игровое поле:\n{format_board(game['board'])}",
         reply_markup=format_keyboard(game['board'], game_id)
     )
@@ -64,27 +68,27 @@ def format_keyboard(board, game_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def button(update: Update, context: CallbackContext) -> None:
+async def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     game_id, pos = query.data.split('_')
     pos = int(pos)
 
     if game_id not in games:
-        query.answer("Игра не найдена.")
+        await query.answer("Игра не найдена.")
         return
 
     game = games[game_id]
 
     if game['status'] != 'ongoing':
-        query.answer("Игра завершена.")
+        await query.answer("Игра завершена.")
         return
 
     if query.from_user.id not in game['players']:
-        query.answer("Вы не участник этой игры.")
+        await query.answer("Вы не участник этой игры.")
         return
 
     if game['board'][pos] != EMPTY:
-        query.answer("Эта клетка уже занята.")
+        await query.answer("Эта клетка уже занята.")
         return
 
     player = game['turn']
@@ -92,22 +96,22 @@ def button(update: Update, context: CallbackContext) -> None:
 
     # Проверка на победу и ничью
     if check_win(game['board'], player):
-        query.message.edit_text(f"{format_board(game['board'])}\nИгрок {player} победил!")
+        await query.message.edit_text(f"{format_board(game['board'])}\nИгрок {player} победил!")
         game['status'] = 'finished'
         return
 
     if EMPTY not in game['board']:
-        query.message.edit_text(f"{format_board(game['board'])}\nНичья!")
+        await query.message.edit_text(f"{format_board(game['board'])}\nНичья!")
         game['status'] = 'finished'
         return
 
     # Смена хода
     game['turn'] = PLAYER_X if player == PLAYER_O else PLAYER_O
-    query.message.edit_text(
+    await query.message.edit_text(
         f"{format_board(game['board'])}\nХод игрока {game['turn']}.",
         reply_markup=format_keyboard(game['board'], game_id)
     )
-    query.answer()
+    await query.answer()
 
 def check_win(board, player):
     win_conditions = [
@@ -117,7 +121,7 @@ def check_win(board, player):
     ]
     return any(all(board[i] == player for i in condition) for condition in win_conditions)
 
-def main() -> None:
+async def main() -> None:
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
     application = Application.builder().token(TOKEN).build()
@@ -127,7 +131,8 @@ def main() -> None:
     application.add_handler(CommandHandler("join_game", join_game))
     application.add_handler(CallbackQueryHandler(button))
 
-    application.run_polling()
+    await application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
