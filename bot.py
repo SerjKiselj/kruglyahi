@@ -1,161 +1,133 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import random
-import string
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, CallbackContext
 
-# Настройка логирования
+# Логи для отладки
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Глобальное хранилище игр
-games = {}
-
 # Константы
 EMPTY = ''
-PLAYERS = ['X', 'O']
+PLAYER_X = 'X'
+PLAYER_O = 'O'
 
-def start_game(size=3):
-    return [EMPTY] * (size * size)
+# Хранилище игр
+games = {}
 
-def format_keyboard(board, size):
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(
+        "Привет! Используйте команду /create_game, чтобы создать новую игру.\n"
+        "Используйте команду /join_game <код_игры>, чтобы присоединиться к существующей игре."
+    )
+
+def create_game(update: Update, context: CallbackContext) -> None:
+    game_id = str(update.message.chat_id)
+    games[game_id] = {
+        'board': [EMPTY] * 9,
+        'players': [update.message.chat_id],
+        'turn': PLAYER_X,
+        'status': 'waiting'
+    }
+    update.message.reply_text(f"Игра создана! Ваш код игры: {game_id}. Передайте этот код другому игроку, чтобы присоединиться.")
+    
+def join_game(update: Update, context: CallbackContext) -> None:
+    game_id = context.args[0]
+    if game_id not in games:
+        update.message.reply_text("Игра с таким кодом не найдена.")
+        return
+    
+    game = games[game_id]
+    
+    if len(game['players']) >= 2:
+        update.message.reply_text("Игра уже заполнена.")
+        return
+    
+    game['players'].append(update.message.chat_id)
+    game['status'] = 'ongoing'
+    update.message.reply_text("Вы присоединились к игре! Ваш ход.")
+    
+    # Отправляем поле
+    update.message.reply_text(
+        f"Игра началась! Ваш ход. Игровое поле:\n{format_board(game['board'])}",
+        reply_markup=format_keyboard(game['board'], game_id)
+    )
+
+def format_board(board):
+    return "\n".join(
+        "".join(board[i:i+3]) for i in range(0, 9, 3)
+    )
+
+def format_keyboard(board, game_id):
     keyboard = [
-        [InlineKeyboardButton(board[i*size + j] or ' ', callback_data=str(i*size + j)) for j in range(size)]
-        for i in range(size)
+        [InlineKeyboardButton(board[i] or ' ', callback_data=f"{game_id}_{i}") for i in range(j, j+3)]
+        for j in range(0, 9, 3)
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def check_win(board, player, size):
-    lines = []
-    for i in range(size):
-        lines.append(board[i*size:(i+1)*size])  # строки
-        lines.append(board[i::size])  # столбцы
-    lines.append([board[i*(size+1)] for i in range(size)])  # главная диагональ
-    lines.append([board[(i+1)*(size-1)] for i in range(size)])  # побочная диагональ
-
-    for line in lines:
-        if all(cell == player for cell in line):
-            return True
-    return False
-
-def check_draw(board):
-    return all(cell != EMPTY for cell in board)
-
-def generate_game_code(length=6):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
-
-async def create_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    game_code = generate_game_code()
-    games[game_code] = {
-        'board': start_game(),
-        'players': [user_id],
-        'current_player': 'X',  # Начинает игрок 'X'
-        'size': 3
-    }
-    await update.message.reply_text(f"Вы создали новую игру! Ваш уникальный код игры: `{game_code}`. Отправьте этот код другим игрокам.")
-
-async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    args = context.args
-    if not args:
-        await update.message.reply_text("Пожалуйста, укажите код игры для присоединения.")
-        return
-
-    game_code = args[0].upper()
-    if game_code not in games:
-        await update.message.reply_text("Игра с таким кодом не найдена.")
-        return
-
-    game = games[game_code]
-    if len(game['players']) >= 2:
-        await update.message.reply_text("В этой игре уже достаточно игроков.")
-        return
-
-    if user_id in game['players']:
-        await update.message.reply_text("Вы уже участвуете в этой игре.")
-        return
-
-    # Присоединение игрока
-    game['players'].append(user_id)
-    game['current_player'] = 'X' if len(game['players']) == 1 else 'O'  # Определяем символ для нового игрока
-    await update.message.reply_text(f"Вы присоединились к игре как '{game['current_player']}'!")
-
-    if len(game['players']) == 2:
-        for player in game['players']:
-            await context.bot.send_message(player, "Игра начнётся, как только оба игрока готовы.")
-    
-    for player in game['players']:
-        if player != user_id:
-            await context.bot.send_message(player, f"Игрок присоединился: {update.message.from_user.first_name}")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Добро пожаловать в игру крестики-нолики! Используйте команды /create_game для создания игры и /join_game <код> для присоединения к игре.")
-
-async def handle_game_move(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
-    data = query.data
-    game_code = context.user_data.get('game_code')
-    
-    if not game_code or game_code not in games:
-        await query.message.reply_text("Игра не найдена или не назначена.")
+    game_id, pos = query.data.split('_')
+    pos = int(pos)
+
+    if game_id not in games:
+        query.answer("Игра не найдена.")
         return
 
-    game = games[game_code]
-    board = game['board']
-    size = game['size']
-    current_player = game['current_player']
-    
-    if user_id not in game['players']:
-        await query.answer("Вы не участвуете в этой игре.")
+    game = games[game_id]
+
+    if game['status'] != 'ongoing':
+        query.answer("Игра завершена.")
         return
 
-    if user_id == game['players'][0]:
-        player = 'X'
-    else:
-        player = 'O'
-    
-    if player != current_player:
-        await query.answer("Сейчас не ваш ход.")
+    if query.from_user.id not in game['players']:
+        query.answer("Вы не участник этой игры.")
         return
 
-    move = int(data)
-    if board[move] != EMPTY:
-        await query.answer("Эта клетка уже занята!")
+    if game['board'][pos] != EMPTY:
+        query.answer("Эта клетка уже занята.")
         return
 
-    board[move] = player
-    if check_win(board, player, size):
-        await query.message.edit_text(f"Игрок '{player}' выиграл!")
-        game['board'] = start_game(size)
-        game['players'] = []  # Очистка игроков после завершения игры
+    player = game['turn']
+    game['board'][pos] = player
+
+    # Проверка на победу и ничью
+    if check_win(game['board'], player):
+        query.message.edit_text(f"{format_board(game['board'])}\nИгрок {player} победил!")
+        game['status'] = 'finished'
         return
 
-    if check_draw(board):
-        await query.message.edit_text("Ничья!")
-        game['board'] = start_game(size)
+    if EMPTY not in game['board']:
+        query.message.edit_text(f"{format_board(game['board'])}\nНичья!")
+        game['status'] = 'finished'
         return
 
-    # Переключение хода
-    game['current_player'] = 'X' if current_player == 'O' else 'O'
-    await query.message.edit_text("Ход сделан. Ожидайте следующего хода.", reply_markup=format_keyboard(board, size))
-    for player in game['players']:
-        await context.bot.send_message(player, "Сделан ход. Ожидайте своей очереди.")
+    # Смена хода
+    game['turn'] = PLAYER_X if player == PLAYER_O else PLAYER_O
+    query.message.edit_text(
+        f"{format_board(game['board'])}\nХод игрока {game['turn']}.",
+        reply_markup=format_keyboard(game['board'], game_id)
+    )
+    query.answer()
 
-def main():
+def check_win(board, player):
+    win_conditions = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Rows
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columns
+        [0, 4, 8], [2, 4, 6]               # Diagonals
+    ]
+    return any(all(board[i] == player for i in condition) for condition in win_conditions)
+
+def main() -> None:
     TOKEN = "7456873724:AAGUMY7sQm3fPaPH0hJ50PPtfSSHge83O4s"
 
-    app = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("create_game", create_game))
-    app.add_handler(CommandHandler("join_game", join_game))
-    app.add_handler(CallbackQueryHandler(handle_game_move))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("create_game", create_game))
+    application.add_handler(CommandHandler("join_game", join_game))
+    application.add_handler(CallbackQueryHandler(button))
 
-    print("Бот запущен. Нажмите Ctrl+C для завершения.")
-    app.run_polling()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
